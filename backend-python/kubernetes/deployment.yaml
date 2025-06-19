@@ -1,0 +1,459 @@
+# Kubernetes Deployment for DroneStrike v2 Backend
+# Production-ready deployment with comprehensive configuration
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dronestrike-backend
+  namespace: dronestrike
+  labels:
+    app: dronestrike-backend
+    version: v2.0.0
+    component: backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: dronestrike-backend
+  template:
+    metadata:
+      labels:
+        app: dronestrike-backend
+        version: v2.0.0
+        component: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      serviceAccountName: dronestrike-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+      - name: backend
+        image: dronestrike/backend:2.0.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: DATABASE_HOST
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-host
+        - name: DATABASE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-name
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-user
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-password
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: redis-host
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: redis-password
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: secret-key
+        - name: PASSWORD_PEPPER
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: password-pepper
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: encryption-key
+        - name: MAILGUN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: mailgun-api-key
+        - name: MAILGUN_DOMAIN
+          valueFrom:
+            configMapKeyRef:
+              name: dronestrike-config
+              key: mailgun-domain
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: aws-secret-access-key
+        - name: AWS_S3_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: dronestrike-config
+              key: aws-s3-bucket
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: stripe-secret-key
+        - name: FRONTEND_URL
+          valueFrom:
+            configMapKeyRef:
+              name: dronestrike-config
+              key: frontend-url
+        - name: BACKEND_URL
+          valueFrom:
+            configMapKeyRef:
+              name: dronestrike-config
+              key: backend-url
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 12
+        volumeMounts:
+        - name: app-logs
+          mountPath: /app/logs
+        - name: app-uploads
+          mountPath: /app/uploads
+        - name: app-config
+          mountPath: /app/config/production.py
+          subPath: production.py
+          readOnly: true
+        - name: ssl-certs
+          mountPath: /app/ssl
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
+      volumes:
+      - name: app-logs
+        persistentVolumeClaim:
+          claimName: dronestrike-logs-pvc
+      - name: app-uploads
+        persistentVolumeClaim:
+          claimName: dronestrike-uploads-pvc
+      - name: app-config
+        configMap:
+          name: dronestrike-config
+      - name: ssl-certs
+        secret:
+          secretName: dronestrike-ssl
+          defaultMode: 0600
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - dronestrike-backend
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 30
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 30
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dronestrike-celery-worker
+  namespace: dronestrike
+  labels:
+    app: dronestrike-celery-worker
+    version: v2.0.0
+    component: worker
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: dronestrike-celery-worker
+  template:
+    metadata:
+      labels:
+        app: dronestrike-celery-worker
+        version: v2.0.0
+        component: worker
+    spec:
+      serviceAccountName: dronestrike-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+      - name: celery-worker
+        image: dronestrike/backend:2.0.0
+        imagePullPolicy: Always
+        command: ["celery"]
+        args: ["-A", "tasks.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: DATABASE_HOST
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-host
+        - name: DATABASE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-name
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-user
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-password
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: redis-host
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: redis-password
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: secret-key
+        - name: MAILGUN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: mailgun-api-key
+        - name: MAILGUN_DOMAIN
+          valueFrom:
+            configMapKeyRef:
+              name: dronestrike-config
+              key: mailgun-domain
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - celery
+            - -A
+            - tasks.celery_app
+            - inspect
+            - ping
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+        - name: app-logs
+          mountPath: /app/logs
+        - name: app-uploads
+          mountPath: /app/uploads
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: app-logs
+        persistentVolumeClaim:
+          claimName: dronestrike-logs-pvc
+      - name: app-uploads
+        persistentVolumeClaim:
+          claimName: dronestrike-uploads-pvc
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 60
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dronestrike-celery-beat
+  namespace: dronestrike
+  labels:
+    app: dronestrike-celery-beat
+    version: v2.0.0
+    component: scheduler
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dronestrike-celery-beat
+  template:
+    metadata:
+      labels:
+        app: dronestrike-celery-beat
+        version: v2.0.0
+        component: scheduler
+    spec:
+      serviceAccountName: dronestrike-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+      - name: celery-beat
+        image: dronestrike/backend:2.0.0
+        imagePullPolicy: Always
+        command: ["celery"]
+        args: ["-A", "tasks.celery_app", "beat", "--loglevel=info", "--scheduler=celery.schedulers:PersistentScheduler"]
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: DATABASE_HOST
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-host
+        - name: DATABASE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-name
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-user
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: database-password
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: redis-host
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: redis-password
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dronestrike-secrets
+              key: secret-key
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import celery; print('OK')"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+        - name: app-logs
+          mountPath: /app/logs
+        - name: celery-beat-schedule
+          mountPath: /app/celerybeat-schedule
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: app-logs
+        persistentVolumeClaim:
+          claimName: dronestrike-logs-pvc
+      - name: celery-beat-schedule
+        persistentVolumeClaim:
+          claimName: dronestrike-beat-pvc
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

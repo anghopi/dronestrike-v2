@@ -1,0 +1,96 @@
+# Kubernetes Services for DroneStrike v2 Backend
+# Production service configurations with load balancing and health checks
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: dronestrike-backend-service
+  namespace: dronestrike
+  labels:
+    app: dronestrike-backend
+    component: backend
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "30"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-unhealthy-threshold: "3"
+spec:
+  type: LoadBalancer
+  selector:
+    app: dronestrike-backend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 8000
+    protocol: TCP
+  sessionAffinity: None
+  loadBalancerSourceRanges:
+  - 0.0.0.0/0
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dronestrike-backend-internal
+  namespace: dronestrike
+  labels:
+    app: dronestrike-backend
+    component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: dronestrike-backend
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  sessionAffinity: None
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dronestrike-celery-flower
+  namespace: dronestrike
+  labels:
+    app: dronestrike-celery-flower
+    component: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: dronestrike-celery-flower
+  ports:
+  - name: http
+    port: 5555
+    targetPort: 5555
+    protocol: TCP
+
+---
+# Headless service for StatefulSet components
+apiVersion: v1
+kind: Service
+metadata:
+  name: dronestrike-backend-headless
+  namespace: dronestrike
+  labels:
+    app: dronestrike-backend
+    component: backend
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: dronestrike-backend
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP

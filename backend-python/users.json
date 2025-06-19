@@ -1,0 +1,42 @@
+{
+  "testuser": {
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "$2b$12$x60R26DVYFz6.hMYfJYvqeNR4tsVXCl6SpjiQaY5LK1rxusDfDYs6",
+    "firstName": "Test",
+    "lastName": "User",
+    "company": null,
+    "phone": null,
+    "created_at": "2025-06-16T18:36:13.477320"
+  },
+  "newuser": {
+    "username": "newuser",
+    "email": "new@test.com",
+    "password": "$2b$12$NKGnYPVCPyn.qpNa99WMP.fWnYsZLuhQRLEaPuyTcGJiNdG.cOpQK",
+    "firstName": "New",
+    "lastName": "User",
+    "company": null,
+    "phone": null,
+    "created_at": "2025-06-16T18:37:39.055611"
+  },
+  "newuser123": {
+    "username": "newuser123",
+    "email": "newuser123@test.com",
+    "password": "$2b$12$2.lXsqTgnO0U/lBkvhhZVelSPRvn1u4e4ukyeZPwL.MfavpJZCcZ2",
+    "firstName": "New",
+    "lastName": "User",
+    "company": null,
+    "phone": null,
+    "created_at": "2025-06-19T19:32:26.466372"
+  },
+  "aopinca": {
+    "username": "aopinca",
+    "email": "anghelina.opinca@gmail.com",
+    "password": "$2b$12$EG6KAVcbdoT0nafvU.MFk.yehSug1aTimz8QXIjZJoIEzeHcfKIo2",
+    "firstName": "Anghelina",
+    "lastName": "Opinca",
+    "company": "Panacea",
+    "phone": "2106630909",
+    "created_at": "2025-06-19T19:57:32.759730"
+  }
+}
