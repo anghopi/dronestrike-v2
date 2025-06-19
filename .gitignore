@@ -511,10 +511,54 @@ cache/
 # API keys and secrets
 secrets.json
 config/secrets.py
+**/secrets/
+**/.env
+**/.env.*
+**/config/production.py
+**/config/local.py
+
+# DroneStrike specific sensitive files
+django_backend/.env
+django_backend/.env.*
+frontend/.env
+frontend/.env.*
+backend-python/.env
+backend-python/.env.*
+.env
+.env.*
+
+# Environment example files (contain structure but no real secrets)
+**/.env.example
+django_backend/.env.example
+frontend/.env.example
+backend-python/.env.example
+
+# API key files
+*api_keys*
+*secrets*
+*credentials*
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Service account files
+*service-account*.json
+*firebase*.json
+*gcloud*.json
+
+# Database files with potential sensitive data
+*.db
+*.sqlite
+*.sqlite3
+db.sqlite3*
 
 # Log files
 *.log
 logs/
+django.log
+backend.log
+frontend.log
 
 # Runtime files
 *.pid
