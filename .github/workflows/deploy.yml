@@ -1,0 +1,41 @@
+name: Deploy to Digital Ocean
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+    
+    - name: Deploy to Digital Ocean
+      run: |
+        ssh -o StrictHostKeyChecking=no droneuser@dronestrike-v2 << 'EOF'
+          cd /home/droneuser/dronestrike-v2
+          git pull origin main
+          
+          # Backend deployment
+          cd django_backend
+          source venv/bin/activate
+          pip install -r requirements.txt
+          python manage.py migrate
+          python manage.py collectstatic --noinput
+          sudo systemctl restart dronestrike-django
+          
+          # Frontend deployment  
+          cd ../frontend
+          npm install
+          npm run build
+          sudo cp -r build/* /var/www/dronestrike-v2/
+          sudo systemctl restart nginx
+          
+          echo "Deployment completed successfully"
+        EOF
