@@ -11,14 +11,13 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.7.0
-      with:
-        ssh-private-key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
-    
     - name: Deploy to Digital Ocean
-      run: |
-        ssh -o StrictHostKeyChecking=no droneuser@dronestrike-v2 << 'EOF'
+      uses: appleboy/ssh-action@v0.1.8
+      with:
+        host: 134.199.192.164
+        username: droneuser
+        password: ${{ secrets.DO_SERVER_PASSWORD }}
+        script: |
           cd /home/droneuser/dronestrike-v2
           git pull origin main
           
@@ -28,7 +27,8 @@ jobs:
           pip install -r requirements.txt
           python manage.py migrate
           python manage.py collectstatic --noinput
-          sudo systemctl restart dronestrike-django
+          pkill -f "manage.py runserver" || true
+          nohup python manage.py runserver 0.0.0.0:8000 > django.log 2>&1 &
           
           # Frontend deployment  
           cd ../frontend
@@ -38,4 +38,3 @@ jobs:
           sudo systemctl restart nginx
           
           echo "Deployment completed successfully"
-        EOF
