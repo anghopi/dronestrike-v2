@@ -174,14 +174,22 @@ const Targets: React.FC = () => {
       const properties = propsResponse.results || [];
       
       // Create mock targets from properties
-      const mockTargets: Target[] = properties.map((prop: Property, index: number) => ({
+      const mockTargets: Target[] = properties.map((prop: any, index: number) => ({
         id: prop.id,
         property_id: prop.id,
         lead_id: prop.id,
         status: ['New', 'Contacted', 'Interested', 'Not Interested', 'Follow Up'][Math.floor(Math.random() * 5)],
         priority: ['Low', 'Medium', 'High', 'Critical'][Math.floor(Math.random() * 4)],
         lead_score: Math.floor(Math.random() * 100) + 1,
-        property: prop,
+        property: {
+          ...prop,
+          address: prop.address || `${prop.property_address || 'Unknown'} ${prop.city || ''} ${prop.state || ''}`.trim(),
+          lat: prop.lat || prop.latitude || 32.7767,
+          lng: prop.lng || prop.longitude || -96.7970,
+          property_value: prop.property_value || prop.market_value || 0,
+          market_value: prop.market_value || prop.property_value || 0,
+          assessed_value: prop.assessed_value || 0
+        },
         lead: {
           id: prop.id,
           first_name: ['John', 'Jane', 'Bob', 'Alice', 'Mike', 'Sarah'][Math.floor(Math.random() * 6)],
@@ -191,14 +199,14 @@ const Targets: React.FC = () => {
           language_preference: Math.random() > 0.8 ? 'Spanish' : 'English',
           lead_status: ['qualified', 'unqualified', 'contacted', 'new'][Math.floor(Math.random() * 4)],
           do_not_contact: Math.random() > 0.9,
-          created_at: prop.created_at,
-          updated_at: prop.updated_at
+          created_at: prop.created_at || new Date().toISOString(),
+          updated_at: prop.updated_at || new Date().toISOString()
         },
         contact_attempts: Math.floor(Math.random() * 5),
         assigned_to: ['Agent Smith', 'Agent Johnson', 'Agent Brown'][Math.floor(Math.random() * 3)],
         tags: Math.random() > 0.5 ? ['High Value', 'Foreclosure'] : ['Standard'],
-        created_at: prop.created_at,
-        updated_at: prop.updated_at
+        created_at: prop.created_at || new Date().toISOString(),
+        updated_at: prop.updated_at || new Date().toISOString()
       }));
       
       setTargets(mockTargets);
@@ -220,7 +228,12 @@ const Targets: React.FC = () => {
         lng: mapCenter.lng,
         limit: 100
       });
-      setHeatmapData(response.results || []);
+      const heatmapPins: HeatMapPin[] = (response.results || []).map((prop: any) => ({
+        lat: prop.lat || prop.latitude || 32.7767,
+        lng: prop.lng || prop.longitude || -96.7970,
+        weight: prop.property_value || prop.market_value || Math.random()
+      }));
+      setHeatmapData(heatmapPins);
     } catch (error) {
       console.error('Error loading heat map data:', error);
     }

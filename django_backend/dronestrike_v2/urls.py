@@ -12,7 +12,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
     TokenVerifyView,
 )
-from core.views import UserRegistrationView
+from core.views import UserRegistrationView, CurrentUserView
 
 urlpatterns = [
     # Django Admin
@@ -21,6 +21,7 @@ urlpatterns = [
     # Authentication endpoints
     path('auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/register/', UserRegistrationView.as_view(), name='user_register'),
+    path('auth/me/', CurrentUserView.as_view(), name='current_user'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/verify/', TokenVerifyView.as_view(), name='token_verify'),
     

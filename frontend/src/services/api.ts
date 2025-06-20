@@ -89,19 +89,19 @@ class APIClient {
     console.log('API client: sending login request to FastAPI backend with:', credentials);
     console.log('API client: using base URL:', API_BASE_URL);
     try {
-      const response = await this.client.post<{access_token: string, token_type: string}>('/api/v1/auth/login', {
+      const response = await this.client.post<{access: string, refresh: string}>('/auth/login/', {
         username: credentials.username,
         password: credentials.password
       });
       console.log('API client: received response:', response.data);
-      const { access_token } = response.data;
+      const { access, refresh } = response.data;
       
-      this.setAuthToken(access_token);
+      this.setAuthToken(access);
       console.log('API client: token set successfully');
       
       return {
-        access: access_token,
-        refresh: '' // FastAPI backend doesn't use refresh tokens in simple setup
+        access: access,
+        refresh: refresh || ''
       };
     } catch (error: any) {
       console.error('API client: login request failed:', error);
@@ -145,7 +145,7 @@ class APIClient {
   }): Promise<any> {
     console.log('API client: sending registration request with:', userData);
     try {
-      const response = await this.client.post('/api/v1/auth/register', {
+      const response = await this.client.post('/auth/register/', {
         username: userData.username,
         email: userData.email,
         password: userData.password,
@@ -171,7 +171,7 @@ class APIClient {
 
   // User Profile Methods
   async getCurrentProfile(): Promise<UserProfile> {
-    const response = await this.client.get<any>('/api/v1/auth/me');
+    const response = await this.client.get<any>('/auth/me/');
     // Transform the FastAPI response to match our UserProfile interface
     const userData = response.data;
     return {

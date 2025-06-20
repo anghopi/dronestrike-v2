@@ -31,6 +31,26 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.csv_service import csv_service
 
 
+class CurrentUserView(generics.RetrieveAPIView):
+    """Get current authenticated user profile"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        profile = getattr(user, 'profile', None)
+        
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'firstName': user.first_name,
+            'lastName': user.last_name,
+            'company': profile.company.name if profile and profile.company else '',
+            'role': profile.role if profile else 'user',
+            'tokens': profile.tokens if profile else 0,
+        })
+
+
 class CompanyViewSet(viewsets.ModelViewSet):
     """Company management API"""
     queryset = Company.objects.all()
