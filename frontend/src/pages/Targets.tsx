@@ -32,7 +32,7 @@ import {
   StarIcon as StarIconSolid,
   ExclamationTriangleIcon as ExclamationTriangleIconSolid
 } from '@heroicons/react/24/solid';
-import { api } from '../services/api';
+import { apiClient, propertyService } from '../services/api';
 
 interface Property {
   id: number;
@@ -169,11 +169,9 @@ const Targets: React.FC = () => {
     setIsLoading(true);
     try {
       // Load properties and create targets
-      const propsResponse = await api.get('/api/admin/properties', {
-        params: { limit: 1000 }
-      });
+      const propsResponse = await propertyService.getProperties({ limit: 1000 });
       
-      const properties = propsResponse.data.properties || [];
+      const properties = propsResponse.results || [];
       
       // Create mock targets from properties
       const mockTargets: Target[] = properties.map((prop: Property, index: number) => ({
@@ -217,16 +215,12 @@ const Targets: React.FC = () => {
   // Load heat map data
   const loadHeatmapData = async () => {
     try {
-      const response = await api.get('/api/admin/pins', {
-        params: {
-          region_lat: mapCenter.lat,
-          region_lng: mapCenter.lng,
-          region_lat_delta: 0.1,
-          region_lng_delta: 0.1,
-          zoom_level: mapZoom
-        }
+      const response = await propertyService.getProperties({
+        lat: mapCenter.lat,
+        lng: mapCenter.lng,
+        limit: 100
       });
-      setHeatmapData(response.data);
+      setHeatmapData(response.results || []);
     } catch (error) {
       console.error('Error loading heat map data:', error);
     }

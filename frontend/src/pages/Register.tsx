@@ -315,19 +315,13 @@ export const Register: React.FC = () => {
         </div>
 
         {/* Card Footer */}
-        <div className="flex flex-col items-center p-6 pt-0 space-y-3">
+        <div className="flex justify-center p-6 pt-0">
           <p className="text-sm text-gray-400">
             Already have an account?{' '}
             <Link to="/login" className="text-blue-400 hover:text-blue-300 transition-colors">
               Sign in here
             </Link>
           </p>
-          <Link 
-            to="/login" 
-            className="w-full h-10 px-4 py-2 bg-transparent border border-blue-600 text-blue-400 hover:text-white hover:bg-blue-600 font-medium rounded-lg transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-[1.02] flex items-center justify-center"
-          >
-            Back to Login
-          </Link>
         </div>
       </div>
 
