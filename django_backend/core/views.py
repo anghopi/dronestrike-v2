@@ -15,11 +15,18 @@ import csv
 import io
 from django.core.files.uploadedfile import InMemoryUploadedFile
 
-from .models import Company, UserProfile, County, Property, Lead
+from .models import (
+    Company, UserProfile, County, Property, Lead,
+    Mission, MissionRoute, MissionRoutePoint, MissionLog, MissionPhoto,
+    Device, MissionDeclineReason
+)
 from .serializers import (
     CompanySerializer, UserProfileSerializer, CountySerializer,
     PropertySerializer, LeadSerializer, LeadCreateSerializer,
-    LoanCalculationSerializer, TokenTransactionSerializer
+    LoanCalculationSerializer, TokenTransactionSerializer,
+    MissionSerializer, MissionCreateSerializer, MissionUpdateSerializer,
+    MissionRouteSerializer, MissionPhotoSerializer, MissionSearchSerializer,
+    RouteOptimizationRequestSerializer, DeviceSerializer, MissionDeclineReasonSerializer
 )
 from .services import (
     FinancialCalculationService, TokenService, PropertyScoringService, WorkflowService
@@ -233,12 +240,12 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
 
 class LeadViewSet(viewsets.ModelViewSet):
-    """Lead management API with workflow integration"""
+    """Lead management API with advanced Laravel-compatible filtering"""
     queryset = Lead.objects.select_related('owner', 'property__county').prefetch_related('property__leads')
     permission_classes = [permissions.IsAuthenticated]
     filterset_fields = ['lead_status', 'workflow_stage', 'owner_type', 'mailing_state', 'owner']
-    search_fields = ['first_name', 'last_name', 'email', 'mailing_city', 'phone_cell']
-    ordering_fields = ['score_value', 'created_at', 'last_contact']
+    search_fields = ['first_name', 'last_name', 'email', 'mailing_city', 'phone_cell', 'mailing_address_1', 'account_number']
+    ordering_fields = ['score_value', 'created_at', 'last_contact', 'first_name', 'last_name', 'mailing_city', 'mailing_county']
     ordering = ['-created_at']
     
     def get_serializer_class(self):
@@ -248,10 +255,245 @@ class LeadViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        
         # Users see their own leads or company leads if manager/admin
         if self.request.user.profile.role in ['admin', 'manager']:
-            return queryset.filter(owner__profile__company=self.request.user.profile.company)
-        return queryset.filter(owner=self.request.user)
+            queryset = queryset.filter(owner__profile__company=self.request.user.profile.company)
+        else:
+            queryset = queryset.filter(owner=self.request.user)
+        
+        # Apply Laravel-compatible filters
+        queryset = self.apply_advanced_filters(queryset)
+        return queryset
+    
+    def apply_advanced_filters(self, queryset):
+        """Apply all Laravel-compatible filters for prospects/targets"""
+        params = self.request.query_params
+        
+        # Global search (searches across multiple fields like Laravel)
+        search = params.get('search', '').strip()
+        if search:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(mailing_address_1__icontains=search) |
+                Q(account_number__icontains=search) |
+                Q(phone_cell__icontains=search)
+            )
+        
+        # Specific search fields (Laravel compatibility)
+        search_name = params.get('search_name', '').strip()
+        if search_name:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(first_name__icontains=search_name) | Q(last_name__icontains=search_name)
+            )
+        
+        search_address = params.get('search_address', '').strip()
+        if search_address:
+            queryset = queryset.filter(mailing_address_1__icontains=search_address)
+            
+        search_account = params.get('search_account_number', '').strip()
+        if search_account:
+            queryset = queryset.filter(account_number__icontains=search_account)
+        
+        # Location filters
+        if params.get('property_state'):
+            queryset = queryset.filter(mailing_state__iexact=params['property_state'])
+        if params.get('property_city'):
+            queryset = queryset.filter(mailing_city__icontains=params['property_city'])
+        if params.get('property_zip'):
+            queryset = queryset.filter(mailing_zip5__icontains=params['property_zip'])
+        
+        # Status filters
+        is_active = params.get('is_active')
+        if is_active is not None:
+            if is_active == '1':
+                # Active prospects (not dead or converted)
+                queryset = queryset.exclude(lead_status__in=['dead', 'converted'])
+            elif is_active == '0':
+                # Expired prospects (dead or converted)
+                queryset = queryset.filter(lead_status__in=['dead', 'converted'])
+        
+        # Date range filters
+        created_from = params.get('created_at_from')
+        created_to = params.get('created_at_to')
+        if created_from:
+            try:
+                from datetime import datetime
+                date_from = datetime.strptime(created_from, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__gte=date_from)
+            except ValueError:
+                pass
+        if created_to:
+            try:
+                from datetime import datetime
+                date_to = datetime.strptime(created_to, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__lte=date_to)
+            except ValueError:
+                pass
+        
+        # Advanced prospect filters (Laravel mobile interface compatibility)
+        if params.get('exclude_dangerous') == 'true':
+            queryset = queryset.filter(is_dangerous=False)
+        if params.get('exclude_business') == 'true':
+            queryset = queryset.filter(is_business=False)
+        if params.get('exclude_do_not_contact') == 'true':
+            queryset = queryset.filter(do_not_email=False, do_not_mail=False)
+        
+        # Score range filtering
+        score_min = params.get('score_min')
+        score_max = params.get('score_max')
+        if score_min:
+            try:
+                queryset = queryset.filter(score_value__gte=int(score_min))
+            except ValueError:
+                pass
+        if score_max:
+            try:
+                queryset = queryset.filter(score_value__lte=int(score_max))
+            except ValueError:
+                pass
+        
+        # Property type filtering (based on lead data patterns)
+        property_type = params.get('property_type')
+        if property_type:
+            if property_type == 'residential':
+                queryset = queryset.filter(is_business=False)
+            elif property_type == 'commercial':
+                queryset = queryset.filter(is_business=True)
+        
+        # Geographic radius search
+        lat = params.get('lat')
+        lng = params.get('lng')
+        radius = params.get('radius')
+        if lat and lng and radius:
+            try:
+                from math import cos, radians
+                lat_f = float(lat)
+                lng_f = float(lng)
+                radius_f = float(radius)
+                
+                # Rough bounding box calculation (miles)
+                lat_range = radius_f / 69.0
+                lng_range = radius_f / (69.0 * cos(radians(lat_f)))
+                
+                queryset = queryset.filter(
+                    latitude__range=(lat_f - lat_range, lat_f + lat_range),
+                    longitude__range=(lng_f - lng_range, lng_f + lng_range)
+                )
+            except (ValueError, TypeError):
+                pass
+        
+        # Map bounds search (Laravel compatible)
+        region_lat = params.get('region_lat')
+        region_lng = params.get('region_lng')
+        region_lat_delta = params.get('region_lat_delta')
+        region_lng_delta = params.get('region_lng_delta')
+        if region_lat and region_lng and region_lat_delta and region_lng_delta:
+            try:
+                lat_f = float(region_lat)
+                lng_f = float(region_lng)
+                lat_delta = float(region_lat_delta)
+                lng_delta = float(region_lng_delta)
+                
+                queryset = queryset.filter(
+                    latitude__range=(lat_f - lat_delta, lat_f + lat_delta),
+                    longitude__range=(lng_f - lng_delta, lng_f + lng_delta)
+                )
+            except (ValueError, TypeError):
+                pass
+        
+        # Filter for targets with coordinates (for map display)
+        has_coordinates = params.get('has_coordinates')
+        if has_coordinates == 'true':
+            queryset = queryset.exclude(latitude__isnull=True).exclude(longitude__isnull=True)
+        
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def filter_options(self, request):
+        """Get available filter options for dropdowns"""
+        queryset = self.get_queryset()
+        
+        # Get unique values for filter dropdowns (using available fields)
+        counties = queryset.values_list('mailing_county', flat=True).distinct().exclude(mailing_county__isnull=True).exclude(mailing_county='').order_by('mailing_county')
+        states = queryset.values_list('mailing_state', flat=True).distinct().exclude(mailing_state='').order_by('mailing_state')
+        cities = queryset.values_list('mailing_city', flat=True).distinct().exclude(mailing_city='').order_by('mailing_city')
+        zip_codes = queryset.values_list('mailing_zip5', flat=True).distinct().exclude(mailing_zip5='').order_by('mailing_zip5')
+        statuses = queryset.values_list('lead_status', flat=True).distinct().exclude(lead_status='').order_by('lead_status')
+        
+        return Response({
+            'counties': list(counties),
+            'states': list(states),
+            'cities': list(cities)[:100],
+            'zip_codes': list(zip_codes)[:50],
+            'lead_statuses': list(statuses),
+            'search_types': [
+                {'value': 'all', 'label': 'All Fields'},
+                {'value': 'name', 'label': 'Name'},
+                {'value': 'address', 'label': 'Address'},
+                {'value': 'phone', 'label': 'Phone'},
+                {'value': 'email', 'label': 'Email'},
+                {'value': 'account', 'label': 'Account Number'}
+            ],
+            'property_types': [
+                {'value': 'residential', 'label': 'Residential'},
+                {'value': 'commercial', 'label': 'Commercial'},
+                {'value': 'mixed', 'label': 'Mixed Use'}
+            ],
+            'property_type_filters': [
+                {'value': 'residential', 'label': 'Residential'},
+                {'value': 'commercial', 'label': 'Commercial'},
+                {'value': 'mixed', 'label': 'Mixed Use'}
+            ],
+            'status_options': list(statuses),
+            'score_ranges': [
+                {'value': '0-25', 'label': 'Low (0-25)'},
+                {'value': '26-50', 'label': 'Fair (26-50)'},
+                {'value': '51-75', 'label': 'Good (51-75)'},
+                {'value': '76-100', 'label': 'Excellent (76-100)'}
+            ]
+        })
+    
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """Get prospect statistics for dashboard - Laravel compatible"""
+        from django.db.models import Count, Min, Q
+        queryset = self.get_queryset()
+        
+        # County-based statistics (matching Laravel implementation)
+        county_stats = queryset.values('mailing_county').annotate(
+            total_properties=Count('id'),
+            active_properties=Count('id', filter=Q(lead_status__in=['new', 'contacted', 'interested'])),
+            expired_properties=Count('id', filter=Q(lead_status__in=['dead', 'converted'])),
+            dangerous_count=Count('id', filter=Q(is_dangerous=True)),
+            business_count=Count('id', filter=Q(is_business=True)),
+            returned_postcard_count=Count('id', filter=Q(returned_postcard=True)),
+            last_date=Min('created_at')
+        ).order_by('mailing_county')
+        
+        # Overall totals
+        total_prospects = queryset.count()
+        active_prospects = queryset.exclude(lead_status__in=['dead', 'converted']).count()
+        expired_prospects = queryset.filter(lead_status__in=['dead', 'converted']).count()
+        dangerous_prospects = queryset.filter(is_dangerous=True).count()
+        business_prospects = queryset.filter(is_business=True).count()
+        
+        return Response({
+            'totals': {
+                'total_targets': total_prospects,
+                'active_targets': active_prospects,
+                'expired_targets': expired_prospects,
+                'active_percentage': round((active_prospects / total_prospects * 100) if total_prospects > 0 else 0, 1),
+                'dangerous_targets': dangerous_prospects,
+                'business_targets': business_prospects
+            },
+            'by_county': list(county_stats),
+            'county_counter': list(county_stats)  # Laravel compatibility
+        })
     
     @action(detail=True, methods=['post'])
     def advance_workflow(self, request, pk=None):
@@ -391,14 +633,17 @@ class UserRegistrationView(generics.CreateAPIView):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Create user
+            # Create user with properly hashed password
             user = User.objects.create_user(
                 username=data.get('username'),
                 email=data.get('email'),
-                password=data.get('password'),
+                password=data.get('password'),  # Django will hash this automatically
                 first_name=data.get('first_name', ''),
                 last_name=data.get('last_name', '')
             )
+            # Ensure user is active
+            user.is_active = True
+            user.save()
             
             # Create user profile
             UserProfile.objects.create(

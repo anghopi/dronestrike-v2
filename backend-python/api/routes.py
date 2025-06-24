@@ -20,6 +20,8 @@ from api.integrations import integrations_router
 from api.admin import admin_router
 from api.files import files_router
 from api.mapbox import mapbox_router
+from api.payments import payment_router
+from api.websocket import websocket_router
 
 api_router = APIRouter()
 
@@ -40,3 +42,5 @@ api_router.include_router(integrations_router.router, prefix="/integrations", ta
 api_router.include_router(admin_router.router, prefix="/admin", tags=["admin"])
 api_router.include_router(files_router.router, prefix="/files", tags=["files"])
 api_router.include_router(mapbox_router.router, tags=["mapbox"])
+api_router.include_router(payment_router.router, prefix="/payments", tags=["payments"])
+api_router.include_router(websocket_router.router, prefix="/ws", tags=["websocket"])

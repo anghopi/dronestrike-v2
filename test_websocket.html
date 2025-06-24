@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .message-log { 
+            border: 1px solid #ccc; 
+            height: 400px; 
+            overflow-y: scroll; 
+            padding: 10px; 
+            font-family: monospace; 
+            font-size: 12px;
+            background-color: #f8f9fa;
+        }
+        .controls { margin: 20px 0; }
+        input, button { padding: 8px 12px; margin: 5px; }
+        button { background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DroneStrike WebSocket Test</h1>
+        
+        <div id="status" class="status disconnected">
+            Status: Disconnected
+        </div>
+        
+        <div class="controls">
+            <button onclick="connect()">Connect</button>
+            <button onclick="disconnect()">Disconnect</button>
+            <button onclick="sendTestMessage()">Send Test Message</button>
+            <button onclick="joinRoom()">Join Test Room</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+        
+        <div class="controls">
+            <input type="text" id="messageInput" placeholder="Enter custom message..." style="width: 300px;">
+            <button onclick="sendCustomMessage()">Send Custom</button>
+        </div>
+        
+        <h3>Message Log:</h3>
+        <div id="messageLog" class="message-log"></div>
+    </div>
+
+    <script>
+        let socket = null;
+        let messageCount = 0;
+
+        function log(message) {
+            const logDiv = document.getElementById('messageLog');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(status, isConnected) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = `Status: ${status}`;
+            statusDiv.className = 'status ' + (isConnected ? 'connected' : 'disconnected');
+        }
+
+        function connect() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                log('Already connected');
+                return;
+            }
+
+            const wsUrl = 'ws://localhost:8000/api/v1/ws/ws';
+            log(`Connecting to ${wsUrl}...`);
+            updateStatus('Connecting...', false);
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = function(event) {
+                log('✅ Connected to WebSocket server');
+                updateStatus('Connected', true);
+            };
+
+            socket.onmessage = function(event) {
+                messageCount++;
+                try {
+                    const data = JSON.parse(event.data);
+                    log(`📨 Received (#${messageCount}): ${JSON.stringify(data, null, 2)}`);
+                } catch (e) {
+                    log(`📨 Received (#${messageCount}): ${event.data}`);
+                }
+            };
+
+            socket.onclose = function(event) {
+                log(`❌ Connection closed: ${event.code} - ${event.reason}`);
+                updateStatus('Disconnected', false);
+            };
+
+            socket.onerror = function(error) {
+                log(`⚠️ WebSocket error: ${error}`);
+                updateStatus('Error', false);
+            };
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.close();
+                socket = null;
+                log('🔌 Manually disconnected');
+                updateStatus('Disconnected', false);
+            }
+        }
+
+        function sendTestMessage() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('❌ Not connected');
+                return;
+            }
+
+            const message = {
+                type: 'ping',
+                payload: {
+                    message: 'Hello from test client',
+                    timestamp: new Date().toISOString()
+                }
+            };
+
+            socket.send(JSON.stringify(message));
+            log(`📤 Sent: ${JSON.stringify(message)}`);
+        }
+
+        function joinRoom() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('❌ Not connected');
+                return;
+            }
+
+            const message = {
+                type: 'join_room',
+                payload: {
+                    room: 'test_room'
+                }
+            };
+
+            socket.send(JSON.stringify(message));
+            log(`📤 Sent join room: ${JSON.stringify(message)}`);
+        }
+
+        function sendCustomMessage() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('❌ Not connected');
+                return;
+            }
+
+            const input = document.getElementById('messageInput');
+            const messageText = input.value.trim();
+            
+            if (!messageText) {
+                log('❌ Please enter a message');
+                return;
+            }
+
+            try {
+                const message = JSON.parse(messageText);
+                socket.send(JSON.stringify(message));
+                log(`📤 Sent custom: ${JSON.stringify(message)}`);
+                input.value = '';
+            } catch (e) {
+                // If not valid JSON, send as simple message
+                const message = {
+                    type: 'message',
+                    payload: {
+                        text: messageText
+                    }
+                };
+                socket.send(JSON.stringify(message));
+                log(`📤 Sent custom: ${JSON.stringify(message)}`);
+                input.value = '';
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('messageLog').innerHTML = '';
+            messageCount = 0;
+        }
+
+        // Auto-connect on load
+        window.addEventListener('load', function() {
+            log('🚀 WebSocket test page loaded');
+            connect();
+        });
+
+        // Handle Enter key in message input
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendCustomMessage();
+            }
+        });
+    </script>
+</body>
+</html>
