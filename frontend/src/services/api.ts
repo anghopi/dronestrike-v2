@@ -20,7 +20,7 @@ import {
 } from '../types';
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 class APIClient {
   private client: AxiosInstance;
@@ -89,19 +89,19 @@ class APIClient {
     console.log('API client: sending login request to FastAPI backend with:', credentials);
     console.log('API client: using base URL:', API_BASE_URL);
     try {
-      const response = await this.client.post<{access: string, refresh: string}>('/auth/login/', {
+      const response = await this.client.post<{access_token: string, token_type: string}>('/api/v1/auth/login', {
         username: credentials.username,
         password: credentials.password
       });
       console.log('API client: received response:', response.data);
-      const { access, refresh } = response.data;
+      const { access_token } = response.data;
       
-      this.setAuthToken(access);
+      this.setAuthToken(access_token);
       console.log('API client: token set successfully');
       
       return {
-        access: access,
-        refresh: refresh || ''
+        access: access_token,
+        refresh: access_token // Using same token since simple backend doesn't have refresh tokens
       };
     } catch (error: any) {
       console.error('API client: login request failed:', error);
@@ -118,16 +118,9 @@ class APIClient {
   }
 
   async refreshToken(): Promise<void> {
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    const response = await this.client.post<{ access: string }>('/auth/refresh/', {
-      refresh: refreshToken,
-    });
-
-    this.setAuthToken(response.data.access);
+    // Simple backend doesn't support refresh tokens
+    // Just logout user and redirect to login
+    throw new Error('Token refresh not supported by simple backend');
   }
 
   logout(): void {
@@ -145,7 +138,7 @@ class APIClient {
   }): Promise<any> {
     console.log('API client: sending registration request with:', userData);
     try {
-      const response = await this.client.post('/auth/register/', {
+      const response = await this.client.post('/api/v1/auth/register', {
         username: userData.username,
         email: userData.email,
         password: userData.password,
@@ -171,7 +164,7 @@ class APIClient {
 
   // User Profile Methods
   async getCurrentProfile(): Promise<UserProfile> {
-    const response = await this.client.get<any>('/auth/me/');
+    const response = await this.client.get<any>('/api/v1/auth/me');
     // Transform the FastAPI response to match our UserProfile interface
     const userData = response.data;
     return {
@@ -517,5 +510,48 @@ export const uploadService = {
   uploadFile: (file: File, endpoint: string) => 
     apiClient.uploadFile(file, endpoint),
 };
+
+// Target API (alias for leadAPI with additional methods)
+export const targetAPI = {
+  ...leadService,
+  getTargets: (params?: string) => {
+    // Parse query string to object
+    const queryParams = new URLSearchParams(params || '');
+    const paramsObj: any = {};
+    queryParams.forEach((value, key) => {
+      paramsObj[key] = value;
+    });
+    return apiClient.getLeads(paramsObj);
+  },
+  getFilterOptions: () => apiClient.get('/api/leads/filter_options/'),
+  getStatistics: (params?: string) => apiClient.get(`/api/leads/statistics/${params || ''}`),
+};
+
+// Token API services
+export const tokenAPI = {
+  getPackages: () => apiClient.get('/api/tokens/packages/'),
+  getBalance: () => apiClient.get('/api/tokens/balance/'),
+  createPurchaseIntent: (packageName: string, customAmount?: number) => 
+    apiClient.post('/api/tokens/purchase/', { 
+      package_name: packageName, 
+      custom_amount: customAmount 
+    }),
+  createSubscriptionIntent: (planName: string, discountCode?: string) =>
+    apiClient.post('/api/tokens/subscribe/', {
+      plan_name: planName,
+      discount_code: discountCode
+    }),
+  getPurchaseHistory: () => apiClient.get('/api/tokens/history/'),
+};
+
+// Common API exports
+export const api = apiClient;
+export const authAPI = authService;
+export const leadAPI = leadService;
+export const propertyAPI = propertyService;
+export const missionAPI = {};
+export const companyAPI = {};
+export const userAPI = authService;
+export const countryAPI = {};
 
 export default apiClient;

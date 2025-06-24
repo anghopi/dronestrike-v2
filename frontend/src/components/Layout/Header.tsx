@@ -3,7 +3,6 @@ import {
   Bars3Icon, 
   MagnifyingGlassIcon,
   MicrophoneIcon,
-  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../hooks/useAuth';
 import NotificationCenter from '../advanced/NotificationCenter';
@@ -59,12 +58,6 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar, title }) => {
               <span className="text-xs text-green-300 font-bold tracking-wider">TOKENS</span>
               <span className="text-sm font-bold text-white drop-shadow-sm">{profile.tokens.toLocaleString()}</span>
             </div>
-            {profile.mail_tokens > 0 && (
-              <div className="flex items-center space-x-3 bg-gradient-to-r from-amber-600/20 to-amber-700/20 px-4 py-2.5 rounded-xl shadow-lg border border-amber-500/30 backdrop-blur-sm">
-                <span className="text-xs text-amber-300 font-bold tracking-wider">MAIL</span>
-                <span className="text-sm font-bold text-white drop-shadow-sm">{profile.mail_tokens}</span>
-              </div>
-            )}
           </div>
         )}
 

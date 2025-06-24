@@ -8,6 +8,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.conf import settings
+import uuid
 from decimal import Decimal, ROUND_HALF_UP
 import math
 from datetime import datetime, timedelta
@@ -281,6 +282,7 @@ class Lead(models.Model):
     mailing_address_2 = models.CharField(max_length=255, null=True, blank=True)
     mailing_street = models.CharField(max_length=255, null=True, blank=True)
     mailing_city = models.CharField(max_length=100)
+    mailing_county = models.CharField(max_length=100, null=True, blank=True)
     mailing_state = models.CharField(max_length=2)
     mailing_zip5 = models.CharField(max_length=5)
     mailing_zip4 = models.CharField(max_length=4, null=True, blank=True)
@@ -522,3 +524,379 @@ class TokenTransaction(models.Model):
     def __str__(self):
         sign = '+' if self.tokens_changed > 0 else ''
         return f"{self.user.username}: {sign}{self.tokens_changed} {self.token_type} tokens"
+
+
+class Device(models.Model):
+    """Device tracking for mission creation (from Laravel)"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='devices')
+    device_id = models.CharField(max_length=255, unique=True)
+    device_name = models.CharField(max_length=255, null=True, blank=True)
+    device_type = models.CharField(max_length=50, choices=[
+        ('ios', 'iOS'),
+        ('android', 'Android'),
+        ('web', 'Web Browser'),
+    ])
+    push_token = models.CharField(max_length=255, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    last_seen = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.user.username}'s {self.device_type} device"
+
+
+class MissionDeclineReason(models.Model):
+    """Decline reasons for missions (from Laravel)"""
+    reason = models.CharField(max_length=255)
+    is_safety_related = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    display_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['display_order', 'reason']
+    
+    def __str__(self):
+        return self.reason
+
+
+class Mission(models.Model):
+    """Mission model - translated from Laravel Mission.php with exact business logic"""
+    
+    # Status constants from Laravel
+    STATUS_NEW = 1
+    STATUS_ACCEPTED = 2
+    STATUS_ON_HOLD = 4
+    STATUS_CLOSED = 8
+    STATUS_DECLINED = 16
+    STATUS_DECLINED_SAFETY = 32
+    STATUS_HOLD_EXPIRED = 64
+    STATUS_CLOSED_FOR_INACTIVITY = 128
+    STATUS_SUSPENDED = 256
+    STATUS_PAUSED = 1024
+    
+    STATUS_CHOICES = [
+        (STATUS_NEW, 'New'),
+        (STATUS_ACCEPTED, 'Accepted'),
+        (STATUS_ON_HOLD, 'On Hold'),
+        (STATUS_CLOSED, 'Closed'),
+        (STATUS_DECLINED, 'Declined'),
+        (STATUS_DECLINED_SAFETY, 'Declined - Safety'),
+        (STATUS_HOLD_EXPIRED, 'Hold Expired'),
+        (STATUS_CLOSED_FOR_INACTIVITY, 'Closed for Inactivity'),
+        (STATUS_SUSPENDED, 'Suspended'),
+        (STATUS_PAUSED, 'Paused'),
+    ]
+    
+    # Core relationships (from Laravel Mission.php)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='missions')
+    prospect = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='missions')
+    created_on_device = models.ForeignKey(Device, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Mission status and workflow
+    status = models.IntegerField(choices=STATUS_CHOICES, default=STATUS_NEW)
+    decline_reason = models.ForeignKey(MissionDeclineReason, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # GPS tracking (exact precision from Laravel - decimal 17,14)
+    lat_created = models.DecimalField(max_digits=17, decimal_places=14, null=True, blank=True)
+    lng_created = models.DecimalField(max_digits=17, decimal_places=14, null=True, blank=True)
+    lat_completed = models.DecimalField(max_digits=17, decimal_places=14, null=True, blank=True)
+    lng_completed = models.DecimalField(max_digits=17, decimal_places=14, null=True, blank=True)
+    
+    # Mission completion
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Polymorphic linking (from Laravel)
+    linked_with = models.CharField(max_length=100, null=True, blank=True)
+    link_type = models.CharField(max_length=20, choices=[
+        ('USER', 'User'),
+        ('OPPORTUNITY', 'Opportunity'),
+    ], null=True, blank=True)
+    
+    # Mission flags and business logic
+    is_ongoing = models.BooleanField(default=False)
+    go_to_lead = models.BooleanField(default=False)
+    
+    # Financial tracking (from Laravel)
+    purchase_offer = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    initial_amount_due = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['prospect']),
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['is_ongoing']),
+        ]
+    
+    def __str__(self):
+        return f"Mission {self.id} - {self.prospect} ({self.get_status_display()})"
+    
+    @property
+    def is_active(self):
+        """Check if mission is in active state (from Laravel business logic)"""
+        return self.status in [self.STATUS_NEW, self.STATUS_ACCEPTED, self.STATUS_ON_HOLD]
+    
+    @property
+    def can_be_declined(self):
+        """Check if mission can be declined (from Laravel business logic)"""
+        return self.status in [self.STATUS_NEW, self.STATUS_ACCEPTED]
+    
+    @property
+    def can_be_paused(self):
+        """Check if mission can be paused (from Laravel business logic)"""
+        return self.status == self.STATUS_ACCEPTED
+    
+    def get_distance_traveled(self):
+        """Calculate distance between start and completion points"""
+        if self.lat_created and self.lng_created and self.lat_completed and self.lng_completed:
+            from math import radians, cos, sin, asin, sqrt
+            
+            # Convert to float for calculation
+            lat1, lon1 = float(self.lat_created), float(self.lng_created)
+            lat2, lon2 = float(self.lat_completed), float(self.lng_completed)
+            
+            # Haversine formula
+            lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+            c = 2 * asin(sqrt(a))
+            r = 3956  # Radius of earth in miles
+            return round(c * r, 2)
+        return None
+
+
+class MissionRoute(models.Model):
+    """Mission route for multi-target optimization (from Laravel)"""
+    
+    STATUS_PENDING = 1
+    STATUS_ACTIVE = 2
+    STATUS_COMPLETED = 4
+    
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_ACTIVE, 'Active'),
+        (STATUS_COMPLETED, 'Completed'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mission_routes')
+    status = models.IntegerField(choices=STATUS_CHOICES, default=STATUS_PENDING)
+    
+    # Route optimization
+    optimization_url = models.TextField(null=True, blank=True)  # External routing service URL
+    is_optimized = models.BooleanField(default=False)
+    
+    # Route metadata
+    total_distance_meters = models.IntegerField(null=True, blank=True)
+    total_time_seconds = models.IntegerField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Route {self.id} for {self.user.username} ({self.get_status_display()})"
+
+
+class MissionRoutePoint(models.Model):
+    """Individual points in a mission route (from Laravel)"""
+    
+    mission_route = models.ForeignKey(MissionRoute, on_delete=models.CASCADE, related_name='route_points')
+    prospect = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='route_points')
+    
+    # GPS coordinates (exact precision from Laravel)
+    lat = models.DecimalField(max_digits=17, decimal_places=14)
+    lng = models.DecimalField(max_digits=17, decimal_places=14)
+    
+    # Route optimization data
+    provided_index = models.IntegerField()  # Original order
+    optimized_index = models.IntegerField(null=True, blank=True)  # Optimized order
+    
+    # Distance and timing to next point
+    length_in_meters = models.IntegerField(null=True, blank=True)
+    travel_time_in_seconds = models.IntegerField(null=True, blank=True)
+    
+    # Route geometry (from routing service)
+    points = models.JSONField(null=True, blank=True)  # Detailed route points
+    
+    # Point status
+    STATUS_PENDING = 1
+    STATUS_VISITED = 2
+    STATUS_SKIPPED = 4
+    
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_VISITED, 'Visited'),
+        (STATUS_SKIPPED, 'Skipped'),
+    ]
+    
+    status = models.IntegerField(choices=STATUS_CHOICES, default=STATUS_PENDING)
+    visited_at = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['optimized_index', 'provided_index']
+        indexes = [
+            models.Index(fields=['mission_route', 'optimized_index']),
+            models.Index(fields=['prospect']),
+        ]
+    
+    def __str__(self):
+        return f"Route Point {self.id} - {self.prospect}"
+
+
+class MissionLog(models.Model):
+    """Mission search logs (from Laravel)"""
+    
+    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name='logs')
+    
+    # Search center coordinates
+    lat = models.DecimalField(max_digits=17, decimal_places=14)
+    lng = models.DecimalField(max_digits=17, decimal_places=14)
+    radius = models.IntegerField()  # Search radius in meters
+    
+    # Search filters (from Laravel business logic)
+    filters = models.JSONField(default=dict, blank=True)
+    
+    # Financial filters
+    amount_due_min = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    amount_due_max = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    
+    # Results metadata
+    results_count = models.IntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Search Log {self.id} for Mission {self.mission.id}"
+
+
+class MissionPhoto(models.Model):
+    """Mission photos with GPS validation (from Laravel)"""
+    
+    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name='photos')
+    
+    # Photo file
+    photo = models.ImageField(upload_to='mission_photos/')
+    
+    # GPS coordinates where photo was taken
+    lat = models.DecimalField(max_digits=17, decimal_places=14, null=True, blank=True)
+    lng = models.DecimalField(max_digits=17, decimal_places=14, null=True, blank=True)
+    
+    # Validation
+    is_valid_location = models.BooleanField(default=False)
+    distance_from_target = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)  # meters
+    
+    # Photo metadata
+    caption = models.CharField(max_length=255, null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Photo {self.id} for Mission {self.mission.id}"
+
+
+# Additional Token System Models (extending existing TokenTransaction)
+
+class TokenPackagePurchase(models.Model):
+    """Track token package purchases"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='package_purchases')
+    package_name = models.CharField(max_length=200)
+    regular_tokens = models.IntegerField(default=0)
+    mail_tokens = models.IntegerField(default=0)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Stripe details
+    stripe_payment_intent_id = models.CharField(max_length=200, unique=True)
+    stripe_customer_id = models.CharField(max_length=200)
+    payment_status = models.CharField(max_length=50, default='pending')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.package_name} - ${self.total_price}"
+
+class SubscriptionPlan(models.Model):
+    """Subscription plans available"""
+    name = models.CharField(max_length=200)
+    price_monthly = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.TextField()
+    features = models.JSONField(default=list)
+    stripe_price_id = models.CharField(max_length=200, unique=True)
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.name} - ${self.price_monthly}/month"
+
+class UserSubscription(models.Model):
+    """User's current subscription"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='subscription')
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE)
+    
+    # Stripe details
+    stripe_subscription_id = models.CharField(max_length=200, unique=True)
+    stripe_customer_id = models.CharField(max_length=200)
+    
+    # Status
+    status = models.CharField(max_length=50, default='active')  # active, canceled, past_due, etc.
+    current_period_start = models.DateTimeField()
+    current_period_end = models.DateTimeField()
+    
+    # Beta discounts
+    discount_type = models.CharField(max_length=50, null=True, blank=True)
+    discount_percent = models.IntegerField(null=True, blank=True)
+    discount_end_date = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.plan.name}"
+
+class LeadPackagePurchase(models.Model):
+    """Lead package purchases"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lead_purchases')
+    package_name = models.CharField(max_length=200)
+    number_of_leads = models.IntegerField(validators=[MinValueValidator(1)])
+    price_per_lead = models.DecimalField(max_digits=6, decimal_places=2)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Tokens included with package
+    regular_tokens_included = models.IntegerField(default=0)
+    mail_tokens_included = models.IntegerField(default=0)
+    
+    # Features included
+    includes_skip_trace = models.BooleanField(default=False)
+    includes_mail_tokens = models.BooleanField(default=False)
+    
+    # Stripe details
+    stripe_payment_intent_id = models.CharField(max_length=200, unique=True)
+    payment_status = models.CharField(max_length=50, default='pending')
+    
+    # Fulfillment
+    leads_delivered = models.IntegerField(default=0)
+    tokens_credited = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.number_of_leads} leads - ${self.total_price}"

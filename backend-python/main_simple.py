@@ -747,6 +747,73 @@ async def get_leads():
         "current_page": 1
     }
 
+@app.get("/api/leads/filter_options/")
+async def get_leads_filter_options():
+    """Get filter options for leads"""
+    return {
+        "counties": ["Dallas", "Tarrant", "Collin", "Denton", "Fort Worth"],
+        "states": ["TX", "OK", "AR", "LA"],
+        "cities": ["Dallas", "Fort Worth", "Arlington", "Plano", "Irving"],
+        "zip_codes": ["75201", "75202", "76101", "76102", "75024"],
+        "property_types": ["Residential", "Commercial", "Land", "Multi-Family"],
+        "lead_statuses": ["Active", "Inactive", "Hot", "Cold", "Converted"],
+        "property_type_filters": [
+            {"value": "all", "label": "All Types"},
+            {"value": "residential", "label": "Residential"},
+            {"value": "commercial", "label": "Commercial"},
+            {"value": "land", "label": "Land"}
+        ],
+        "status_options": [
+            {"value": "active", "label": "Active"},
+            {"value": "inactive", "label": "Inactive"}
+        ]
+    }
+
+@app.get("/api/leads/statistics/")
+async def get_leads_statistics():
+    """Get leads statistics for targets page"""
+    # Mock statistics data
+    return {
+        "totals": {
+            "total_targets": 1250,
+            "active_targets": 890,
+            "inactive_targets": 360,
+            "dangerous_targets": 45,
+            "business_targets": 320,
+            "residential_targets": 930,
+            "total_amount": 2500000.00,
+            "average_amount": 2000.00,
+            "max_amount": 50000.00,
+            "min_amount": 500.00
+        },
+        "breakdowns": {
+            "property_types": [
+                {"property_type": "Residential", "count": 930},
+                {"property_type": "Commercial", "count": 320}
+            ],
+            "counties": [
+                {"county": "Dallas", "count": 450},
+                {"county": "Tarrant", "count": 380},
+                {"county": "Collin", "count": 420}
+            ],
+            "statuses": [
+                {"status": "Active", "count": 890},
+                {"status": "Inactive", "count": 360}
+            ],
+            "states": [
+                {"state": "TX", "count": 1250}
+            ]
+        },
+        "contact_stats": {
+            "can_mail": 980,
+            "can_email": 750,
+            "has_email": 820,
+            "has_phone": 1100,
+            "mail_percentage": 78.4,
+            "email_percentage": 60.0
+        }
+    }
+
 @app.post("/api/leads/")
 async def create_lead(lead_data: dict):
     return {
@@ -1014,6 +1081,147 @@ async def get_map_data():
             }
         ],
         "count": 1
+    }
+
+# Complete Token API based on Excel specifications
+@app.get("/api/tokens/packages/")
+async def get_token_packages():
+    """Get available token packages based on Excel specifications"""
+    return {
+        "packages": [
+            {
+                "name": "Starter Package",
+                "regular_tokens": 25000,
+                "mail_tokens": 0,
+                "price": 25.00,
+                "description": "Perfect for getting started - 25,000 regular tokens"
+            },
+            {
+                "name": "Lead Package", 
+                "regular_tokens": 200,
+                "mail_tokens": 0,
+                "price": 1.50,
+                "description": "Lead generation package (minimum 10 leads)"
+            },
+            {
+                "name": "Lead + Skip + Mail",
+                "regular_tokens": 1000,  # 200 + 800 for skip trace
+                "mail_tokens": 1,
+                "price": 1.50,
+                "description": "Complete lead package with skip trace and mail token"
+            },
+            {
+                "name": "Lead + Skip Only",
+                "regular_tokens": 1000,  # 200 + 800 for skip trace  
+                "mail_tokens": 0,
+                "price": 1.00,
+                "description": "Lead package with skip trace included"
+            },
+            {
+                "name": "SMS Package",
+                "regular_tokens": 800,  # 100 SMS messages (8 tokens per SMS)
+                "mail_tokens": 0,
+                "price": 0.80,
+                "description": "Package for SMS campaigns - 100 text messages"
+            },
+            {
+                "name": "Phone Package",
+                "regular_tokens": 10000,  # 100 minutes (100 tokens per minute)
+                "mail_tokens": 0,
+                "price": 10.00,
+                "description": "Phone minutes package - 100 minutes calling time"
+            }
+        ]
+    }
+
+@app.get("/api/tokens/balance/")
+async def get_token_balance():
+    """Get user's current token balance"""
+    return {
+        "regular_tokens": 15420,
+        "mail_tokens": 12,
+        "profile_tokens": 15420,
+        "profile_mail_tokens": 12
+    }
+
+@app.post("/api/tokens/purchase/")
+async def create_purchase_intent(purchase_data: dict):
+    """Create payment intent for token purchase"""
+    package_name = purchase_data.get("package_name")
+    custom_amount = purchase_data.get("custom_amount")
+    
+    # Mock Stripe payment intent
+    return {
+        "client_secret": "pi_mock_client_secret_123",
+        "amount": custom_amount if custom_amount else 25.00,
+        "currency": "usd",
+        "package_name": package_name
+    }
+
+@app.get("/api/tokens/history/")
+async def get_token_purchase_history():
+    """Get token purchase and usage history"""
+    return {
+        "purchases": [
+            {
+                "id": 1,
+                "type": "purchase",
+                "package_name": "Starter Package",
+                "regular_tokens": 25000,
+                "mail_tokens": 0,
+                "total_price": "25.00",
+                "payment_status": "succeeded",
+                "created_at": "2024-01-15T10:30:00Z"
+            },
+            {
+                "id": 2,
+                "type": "purchase", 
+                "package_name": "Lead + Skip + Mail",
+                "regular_tokens": 1000,
+                "mail_tokens": 1,
+                "total_price": "1.50",
+                "payment_status": "succeeded",
+                "created_at": "2024-01-14T14:20:00Z"
+            }
+        ],
+        "transactions": [
+            {
+                "id": 1,
+                "type": "usage",
+                "token_type": "regular",
+                "transaction_type": "sms_campaign",
+                "tokens_changed": -800,
+                "description": "SMS campaign to 100 leads (8 tokens per SMS)",
+                "created_at": "2024-01-16T09:15:00Z"
+            },
+            {
+                "id": 2,
+                "type": "usage",
+                "token_type": "regular", 
+                "transaction_type": "skip_trace",
+                "tokens_changed": -800,
+                "description": "Skip trace lookup (800 tokens per lookup)",
+                "created_at": "2024-01-16T10:30:00Z"
+            },
+            {
+                "id": 3,
+                "type": "usage",
+                "token_type": "mail",
+                "transaction_type": "mail_campaign",
+                "tokens_changed": -1,
+                "description": "Direct mail campaign (1 mail token)",
+                "created_at": "2024-01-16T11:45:00Z"
+            },
+            {
+                "id": 4,
+                "type": "usage",
+                "token_type": "regular",
+                "transaction_type": "phone_minutes",
+                "tokens_changed": -500,
+                "description": "Phone calls - 5 minutes (100 tokens per minute)",
+                "created_at": "2024-01-16T12:00:00Z"
+            }
+        ]
     }
 
 if __name__ == "__main__":

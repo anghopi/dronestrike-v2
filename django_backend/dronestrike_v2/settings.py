@@ -179,6 +179,9 @@ STATICFILES_DIRS = [
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Mapbox Integration (translated from Laravel config)
+MAPBOX_ACCESS_TOKEN = config('MAPBOX_ACCESS_TOKEN', default='pk.your_mapbox_token_here')
+
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
