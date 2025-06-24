@@ -349,21 +349,6 @@ const FAQ: React.FC = () => {
                         {faq.answer}
                       </p>
                     </div>
-                    {faq.keywords.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-gray-700">
-                        <p className="text-xs text-gray-500 mb-2">Related keywords:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {faq.keywords.map((keyword, index) => (
-                            <span
-                              key={index}
-                              className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded-full"
-                            >
-                              {keyword}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}

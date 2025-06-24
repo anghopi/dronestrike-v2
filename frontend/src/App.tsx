@@ -16,7 +16,7 @@ import OpportunitiesEnhanced from './pages/OpportunitiesEnhanced';
 import Missions from './pages/Missions';
 import TLCClients from './pages/TLCClients';
 import MapView from './pages/MapView';
-import Token from './pages/Token';
+import TokensManagement from './pages/TokensManagement';
 import WarRoom from './pages/WarRoom';
 import ImportPage from './pages/ImportPageSimple';
 import Marketing from './pages/Marketing';
@@ -24,7 +24,12 @@ import Documents from './pages/Documents';
 import ScheduledImports from './pages/ScheduledImports';
 import FAQ from './pages/FAQ';
 import Settings from './pages/Settings';
-import Targets from './pages/Targets';
+import TargetsAdvanced from './pages/TargetsAdvanced';
+import TargetsLaravelCompatible from './pages/TargetsLaravelCompatible';
+import MapboxTargetsView from './components/MapboxTargetsView';
+import MissionTargets from './pages/MissionTargets';
+import WebSocketTest from './pages/WebSocketTest';
+import RealtimeDashboardPage from './pages/RealtimeDashboard';
 import { MainLayout } from './components/Layout/MainLayout';
 import ToastNotifications from './components/advanced/ToastNotifications';
 
@@ -144,7 +149,7 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <Token />
+              <TokensManagement />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -363,8 +368,60 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <Targets />
+              <TargetsLaravelCompatible />
             </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/targets-advanced"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <TargetsAdvanced />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/targets-map"
+        element={
+          <ProtectedRoute>
+            <MapboxTargetsView />
+          </ProtectedRoute>
+        }
+      />
+
+
+      <Route
+        path="/mission-targets"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <MissionTargets />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/websocket-test"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <WebSocketTest />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/realtime-dashboard"
+        element={
+          <ProtectedRoute>
+            <RealtimeDashboardPage />
           </ProtectedRoute>
         }
       />
