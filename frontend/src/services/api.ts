@@ -89,19 +89,19 @@ class APIClient {
     console.log('API client: sending login request to FastAPI backend with:', credentials);
     console.log('API client: using base URL:', API_BASE_URL);
     try {
-      const response = await this.client.post<{access_token: string, token_type: string}>('/api/v1/auth/login/', {
+      const response = await this.client.post<{access: string, refresh: string}>('/api/v1/auth/login/', {
         username: credentials.username,
         password: credentials.password
       });
       console.log('API client: received response:', response.data);
-      const { access_token } = response.data;
+      const { access } = response.data;
       
-      this.setAuthToken(access_token);
+      this.setAuthToken(access);
       console.log('API client: token set successfully');
       
       return {
-        access: access_token,
-        refresh: access_token // Using same token since simple backend doesn't have refresh tokens
+        access: access,
+        refresh: response.data.refresh
       };
     } catch (error: any) {
       console.error('API client: login request failed:', error);
