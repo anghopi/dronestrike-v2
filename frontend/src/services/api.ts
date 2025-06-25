@@ -165,12 +165,12 @@ class APIClient {
   // User Profile Methods
   async getCurrentProfile(): Promise<UserProfile> {
     const response = await this.client.get<any>('/api/v1/auth/me/');
-    // Transform the FastAPI response to match our UserProfile interface
+    // Transform the Django response to match our UserProfile interface
     const userData = response.data;
     return {
-      id: 1, // Mock ID
+      id: userData.id || 1,
       user: {
-        id: 1,
+        id: userData.id || 1,
         username: userData.username,
         email: userData.email,
         first_name: userData.firstName || '',
@@ -187,8 +187,8 @@ class APIClient {
         updated_at: new Date().toISOString()
       },
       company_name: userData.company || 'DroneStrike',
-      role: 'admin',
-      tokens: 10000,
+      role: userData.role || 'admin',
+      tokens: userData.tokens || 10000,
       mail_tokens: 100,
       color_scheme: 'dark',
       monthly_subscription_active: false,
