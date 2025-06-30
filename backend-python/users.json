@@ -48,5 +48,15 @@
     "company": "",
     "phone": "",
     "created_at": "2025-06-23T21:17:23.514716"
+  },
+  "test123": {
+    "username": "test123",
+    "email": "test123@gmail.com",
+    "password": "$2b$12$rSkn800DFo/H1rRSYt4.Du5eZCXjpQXFzGV/bCxwclK8SwX2KdowG",
+    "firstName": "",
+    "lastName": "",
+    "company": "",
+    "phone": "",
+    "created_at": "2025-06-25T15:58:42.315808"
   }
 }

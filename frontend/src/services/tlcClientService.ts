@@ -181,11 +181,20 @@ export interface TLCDashboardStats {
 }
 
 class TLCClientService {
-  private apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+  private apiBaseUrl = process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+
+  // Get auth headers for API requests
+  private getAuthHeaders() {
+    const token = localStorage.getItem('access_token');
+    return {
+      'Authorization': token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+    };
+  }
 
   /**
    * Upload and process CSV file
-   * Improved from Laravel with better progress tracking and validation
+   * Connects to Django backend TLC CSV upload endpoint
    */
   async uploadCSV(file: File, fieldMappings?: CSVFieldMapping[]): Promise<CSVImportJob> {
     try {
@@ -196,32 +205,23 @@ class TLCClientService {
         formData.append('field_mappings', JSON.stringify(fieldMappings));
       }
 
-      // In production, this would upload to Python backend
-      // For now, simulate the upload and processing
-      const importJob: CSVImportJob = {
-        id: `import_${Date.now()}`,
-        filename: file.name,
-        file_size: file.size,
-        total_rows: 0,
-        processed_rows: 0,
-        successful_rows: 0,
-        failed_rows: 0,
-        status: 'pending',
-        progress_percentage: 0,
-        errors: [],
-        validation_summary: {
-          duplicate_clients: 0,
-          invalid_emails: 0,
-          missing_required_fields: 0,
-          invalid_tax_amounts: 0,
-          invalid_dates: 0
-        }
-      };
+      // Upload to Django backend
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/upload/csv/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': localStorage.getItem('access_token') ? `Bearer ${localStorage.getItem('access_token')}` : '',
+        },
+        body: formData
+      });
 
-      // Start processing simulation
-      this.simulateCSVProcessing(importJob);
-      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload failed');
+      }
+
+      const importJob: CSVImportJob = await response.json();
       return importJob;
+      
     } catch (error) {
       console.error('CSV upload failed:', error);
       throw new Error('Failed to upload CSV file');
@@ -233,8 +233,15 @@ class TLCClientService {
    */
   async getImportJobStatus(jobId: string): Promise<CSVImportJob> {
     try {
-      // In production, would fetch from Python backend
-      return this.mockImportJobStatus(jobId);
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/import-jobs/${jobId}/`, {
+        headers: this.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch import job status');
+      }
+
+      return await response.json();
     } catch (error) {
       console.error('Failed to get import job status:', error);
       throw new Error('Import job status unavailable');
@@ -242,8 +249,111 @@ class TLCClientService {
   }
 
   /**
+   * Transform Django client data to frontend format
+   */
+  private transformDjangoClient(djangoClient: any): TLCClient {
+    // Get property address
+    const propertyAddress = djangoClient.addresses?.find((addr: any) => addr.address_type === 'property');
+    const mailingAddress = djangoClient.addresses?.find((addr: any) => addr.address_type === 'mailing');
+
+    return {
+      id: djangoClient.id,
+      client_number: djangoClient.client_number,
+      first_name: djangoClient.first_name,
+      last_name: djangoClient.last_name,
+      email: djangoClient.email,
+      phone_primary: djangoClient.phone_primary,
+      phone_secondary: djangoClient.phone_secondary,
+      ssn_last_four: djangoClient.ssn_last_four,
+      date_of_birth: djangoClient.date_of_birth,
+      
+      // Address Information
+      mailing_address: mailingAddress ? {
+        street_1: mailingAddress.street_1,
+        street_2: mailingAddress.street_2,
+        city: mailingAddress.city,
+        state: mailingAddress.state,
+        zip_code: mailingAddress.zip_code,
+        county: mailingAddress.county,
+      } : {
+        street_1: '', city: '', state: 'TX', zip_code: '', county: ''
+      },
+      
+      // Property Information
+      property_address: propertyAddress ? {
+        street_1: propertyAddress.street_1,
+        street_2: propertyAddress.street_2,
+        city: propertyAddress.city,
+        state: propertyAddress.state,
+        zip_code: propertyAddress.zip_code,
+        county: propertyAddress.county,
+      } : {
+        street_1: '', city: '', state: 'TX', zip_code: '', county: ''
+      },
+      
+      // Tax Information
+      tax_info: djangoClient.tax_info ? {
+        account_number: djangoClient.tax_info.account_number,
+        tax_year: djangoClient.tax_info.tax_year,
+        original_tax_amount: parseFloat(djangoClient.tax_info.original_tax_amount),
+        penalties_interest: parseFloat(djangoClient.tax_info.penalties_interest),
+        total_amount_due: parseFloat(djangoClient.tax_info.total_amount_due),
+        tax_sale_date: djangoClient.tax_info.tax_sale_date,
+        lawsuit_status: djangoClient.tax_info.lawsuit_status,
+        attorney_fees: parseFloat(djangoClient.tax_info.attorney_fees || '0'),
+      } : {
+        account_number: '', tax_year: new Date().getFullYear(), 
+        original_tax_amount: 0, penalties_interest: 0, total_amount_due: 0
+      },
+      
+      // Property Valuation
+      property_valuation: djangoClient.property_valuation ? {
+        assessed_land_value: parseFloat(djangoClient.property_valuation.assessed_land_value),
+        assessed_improvement_value: parseFloat(djangoClient.property_valuation.assessed_improvement_value),
+        assessed_total_value: parseFloat(djangoClient.property_valuation.assessed_total_value),
+        market_land_value: parseFloat(djangoClient.property_valuation.market_land_value),
+        market_improvement_value: parseFloat(djangoClient.property_valuation.market_improvement_value),
+        market_total_value: parseFloat(djangoClient.property_valuation.market_total_value),
+        estimated_purchase_price: djangoClient.property_valuation.estimated_purchase_price ? 
+          parseFloat(djangoClient.property_valuation.estimated_purchase_price) : undefined,
+      } : {
+        assessed_land_value: 0, assessed_improvement_value: 0, assessed_total_value: 0,
+        market_land_value: 0, market_improvement_value: 0, market_total_value: 0
+      },
+      
+      // Loan Information (optional)
+      loan_info: djangoClient.loan_info ? {
+        loan_amount: parseFloat(djangoClient.loan_info.loan_amount),
+        interest_rate: parseFloat(djangoClient.loan_info.interest_rate),
+        apr: parseFloat(djangoClient.loan_info.apr),
+        term_months: djangoClient.loan_info.term_months,
+        monthly_payment: parseFloat(djangoClient.loan_info.monthly_payment),
+        total_payment: parseFloat(djangoClient.loan_info.total_payment),
+        loan_to_value_ratio: parseFloat(djangoClient.loan_info.loan_to_value_ratio),
+        status: djangoClient.loan_info.status,
+        application_date: djangoClient.loan_info.application_date,
+        funding_date: djangoClient.loan_info.funding_date,
+        payoff_date: djangoClient.loan_info.payoff_date,
+      } : undefined,
+      
+      // Client Status & Workflow
+      status: djangoClient.status,
+      workflow_stage: djangoClient.workflow_stage,
+      lead_source: djangoClient.lead_source,
+      assigned_agent: djangoClient.assigned_agent,
+      notes: djangoClient.notes || [],
+      
+      // Timestamps
+      created_at: djangoClient.created_at,
+      updated_at: djangoClient.updated_at,
+      last_contact: djangoClient.last_contact,
+      last_activity: djangoClient.last_activity,
+    };
+  }
+
+  /**
    * Get TLC clients with advanced filtering
-   * Improves Laravel pagination and search
+   * Connects to Django backend with advanced filtering
    */
   async getClients(
     filters: TLCClientFilters = {},
@@ -259,15 +369,44 @@ class TLCClientService {
     hasMore: boolean;
   }> {
     try {
-      // In production, would call Python backend with filters
-      const mockClients = this.generateMockClients(pageSize);
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('page_size', pageSize.toString());
+      params.append('ordering', sortOrder === 'desc' ? `-${sortBy}` : sortBy);
+      
+      // Add filter parameters - Django DRF style
+      if (filters.status && filters.status.length > 0) {
+        filters.status.forEach(status => params.append('status', status));
+      }
+      if (filters.workflow_stage && filters.workflow_stage.length > 0) {
+        filters.workflow_stage.forEach(stage => params.append('workflow_stage', stage));
+      }
+      if (filters.search_term) {
+        params.append('search', filters.search_term);
+      }
+      if (filters.assigned_agent) {
+        params.append('assigned_agent', filters.assigned_agent);
+      }
+      
+      // Use development endpoint for now (no auth required)
+      const response = await fetch(`${this.apiBaseUrl}/api/dev/tlc/clients/?${params}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch clients');
+      }
+      
+      const data = await response.json();
+      
+      // Transform Django data to frontend format
+      const transformedClients = data.results?.map((client: any) => this.transformDjangoClient(client)) || [];
       
       return {
-        clients: mockClients,
-        total: 1247,
+        clients: transformedClients,
+        total: data.count || 0,
         page,
-        totalPages: Math.ceil(1247 / pageSize),
-        hasMore: page * pageSize < 1247
+        totalPages: Math.ceil((data.count || 0) / pageSize),
+        hasMore: data.next !== null
       };
     } catch (error) {
       console.error('Failed to fetch clients:', error);
@@ -280,8 +419,16 @@ class TLCClientService {
    */
   async getClient(clientId: string): Promise<TLCClient> {
     try {
-      // In production, would fetch from Python backend
-      return this.generateMockClient(clientId);
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/clients/${clientId}/`, {
+        headers: this.getAuthHeaders()
+      });
+      
+      if (!response.ok) {
+        throw new Error('Client not found');
+      }
+      
+      const clientData = await response.json();
+      return this.transformDjangoClient(clientData);
     } catch (error) {
       console.error('Failed to fetch client:', error);
       throw new Error('Client not found');
@@ -293,11 +440,17 @@ class TLCClientService {
    */
   async updateClient(clientId: string, updates: Partial<TLCClient>): Promise<TLCClient> {
     try {
-      // In production, would call Python backend API
-      console.log(`Updating client ${clientId}:`, updates);
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/clients/${clientId}/`, {
+        method: 'PATCH',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(updates)
+      });
       
-      const client = await this.getClient(clientId);
-      return { ...client, ...updates, updated_at: new Date().toISOString() };
+      if (!response.ok) {
+        throw new Error('Client update failed');
+      }
+      
+      return await response.json();
     } catch (error) {
       console.error('Failed to update client:', error);
       throw new Error('Client update failed');
@@ -306,36 +459,19 @@ class TLCClientService {
 
   /**
    * Get dashboard statistics
-   * Enhanced from Laravel with better analytics
+   * Connects to Django backend dashboard stats endpoint
    */
   async getDashboardStats(): Promise<TLCDashboardStats> {
     try {
-      return {
-        total_clients: 1247,
-        active_loans: 342,
-        total_loan_amount: 8450000,
-        pending_applications: 67,
-        clients_by_status: [
-          { status: 'client', count: 542, percentage: 43.5 },
-          { status: 'applicant', count: 234, percentage: 18.8 },
-          { status: 'lead', count: 298, percentage: 23.9 },
-          { status: 'prospect', count: 143, percentage: 11.5 },
-          { status: 'inactive', count: 30, percentage: 2.4 }
-        ],
-        loans_by_county: [
-          { county: 'Tarrant', count: 156, total_amount: 3200000, avg_amount: 20512 },
-          { county: 'Harris', count: 98, total_amount: 2100000, avg_amount: 21428 },
-          { county: 'Dallas', count: 88, total_amount: 1950000, avg_amount: 22159 }
-        ],
-        monthly_trends: this.generateMonthlyTrends(),
-        performance_metrics: {
-          avg_processing_time_days: 14.5,
-          approval_rate: 78.3,
-          default_rate: 3.2,
-          avg_loan_amount: 24706,
-          avg_ltv_ratio: 65.8
-        }
-      };
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/clients/dashboard_stats/`, {
+        headers: this.getAuthHeaders()
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard stats');
+      }
+      
+      return await response.json();
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error);
       throw new Error('Dashboard data unavailable');
@@ -344,33 +480,21 @@ class TLCClientService {
 
   /**
    * Process loan application
-   * Enhanced workflow from Laravel
+   * Connects to Django backend loan processing
    */
   async processLoanApplication(clientId: string, loanData: any): Promise<TLCClient> {
     try {
-      // In production, would process through Python backend
-      console.log(`Processing loan application for client ${clientId}:`, loanData);
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/clients/${clientId}/process_loan/`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(loanData)
+      });
       
-      const client = await this.getClient(clientId);
-      const updatedClient: TLCClient = {
-        ...client,
-        loan_info: {
-          loan_amount: loanData.loan_amount,
-          interest_rate: loanData.interest_rate,
-          apr: loanData.apr,
-          term_months: loanData.term_months,
-          monthly_payment: loanData.monthly_payment,
-          total_payment: loanData.total_payment,
-          loan_to_value_ratio: loanData.ltv_ratio,
-          status: 'pending',
-          application_date: new Date().toISOString()
-        },
-        status: 'applicant',
-        workflow_stage: 'loan_application_review',
-        updated_at: new Date().toISOString()
-      };
-
-      return updatedClient;
+      if (!response.ok) {
+        throw new Error('Loan application processing failed');
+      }
+      
+      return await response.json();
     } catch (error) {
       console.error('Failed to process loan application:', error);
       throw new Error('Loan application processing failed');
@@ -379,30 +503,96 @@ class TLCClientService {
 
   /**
    * Export clients data
-   * Enhanced export functionality
+   * Connects to Django backend export functionality
    */
   async exportClients(
     filters: TLCClientFilters,
     format: 'csv' | 'excel' | 'pdf'
   ): Promise<Blob> {
     try {
-      // In production, would call Python backend for export
-      const exportData = await this.getClients(filters, 1, 10000);
+      // Build query parameters for filters
+      const params = new URLSearchParams();
+      params.append('format', format);
       
-      // Generate export file
-      switch (format) {
-        case 'csv':
-          return this.generateCSVExport(exportData.clients);
-        case 'excel':
-          return this.generateExcelExport(exportData.clients);
-        case 'pdf':
-          return this.generatePDFExport(exportData.clients);
-        default:
-          throw new Error('Unsupported export format');
+      if (filters.status && filters.status.length > 0) {
+        filters.status.forEach(status => params.append('status[]', status));
       }
+      if (filters.workflow_stage && filters.workflow_stage.length > 0) {
+        filters.workflow_stage.forEach(stage => params.append('workflow_stage[]', stage));
+      }
+      if (filters.counties && filters.counties.length > 0) {
+        filters.counties.forEach(county => params.append('counties[]', county));
+      }
+      if (filters.search_term) {
+        params.append('search_term', filters.search_term);
+      }
+      
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/clients/export/?${params}`, {
+        headers: {
+          'Authorization': localStorage.getItem('access_token') ? `Bearer ${localStorage.getItem('access_token')}` : '',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+      
+      return await response.blob();
     } catch (error) {
       console.error('Export failed:', error);
       throw new Error('Data export failed');
+    }
+  }
+
+  /**
+   * Add note to client
+   */
+  async addClientNote(clientId: string, noteData: {
+    content: string;
+    type: 'general' | 'call' | 'email' | 'meeting' | 'document';
+  }): Promise<any> {
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/clients/${clientId}/add_note/`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          content: noteData.content,
+          note_type: noteData.type
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to add note');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to add note:', error);
+      throw new Error('Failed to add note');
+    }
+  }
+
+  /**
+   * Update client workflow stage
+   */
+  async updateWorkflowStage(clientId: string, workflowStage: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/api/tlc/clients/${clientId}/update_workflow_stage/`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          workflow_stage: workflowStage
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update workflow stage');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update workflow stage:', error);
+      throw new Error('Failed to update workflow stage');
     }
   }
 

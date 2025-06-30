@@ -6,6 +6,7 @@ import CSVUpload from '../components/CSVUpload';
 import { sampleTaxLienData } from '../data/sampleTaxLienData';
 import { TEXAS_COUNTIES } from '../data/texasCounties';
 import MissionAssignmentModal from '../components/missions/MissionAssignmentModal';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 
 interface Target {
   id: number;
@@ -421,11 +422,13 @@ const TargetsLaravelCompatible: React.FC = () => {
             </div>
             <div className="flex space-x-4">
               {/* View Mode Toggle */}
-              <div className="flex bg-slate-700/50 rounded-lg overflow-hidden border border-slate-600/50">
+              <div className="flex bg-slate-800/50 rounded-lg overflow-hidden border border-slate-600/50 shadow-lg">
                 <button
                   onClick={() => setViewMode('table')}
-                  className={`px-4 py-3 flex items-center space-x-2 transition-all duration-200 ${
-                    viewMode === 'table' ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-lg' : 'text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-600 hover:to-slate-700'
+                  className={`px-5 py-3 flex items-center space-x-2 transition-all duration-200 border-r border-slate-600/50 ${
+                    viewMode === 'table' 
+                      ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg' 
+                      : 'bg-slate-700/50 text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-600'
                   }`}
                 >
                   <Settings size={18} />
@@ -433,8 +436,10 @@ const TargetsLaravelCompatible: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setViewMode('map')}
-                  className={`px-4 py-3 flex items-center space-x-2 transition-all duration-200 ${
-                    viewMode === 'map' ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-lg' : 'text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-600 hover:to-slate-700'
+                  className={`px-5 py-3 flex items-center space-x-2 transition-all duration-200 border-r border-slate-600/50 ${
+                    viewMode === 'map' 
+                      ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg' 
+                      : 'bg-slate-700/50 text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-purple-500 hover:to-purple-600'
                   }`}
                 >
                   <Map size={18} />
@@ -442,7 +447,7 @@ const TargetsLaravelCompatible: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setShowImportModal(true)}
-                  className="px-4 py-3 flex items-center space-x-2 transition-all duration-200 text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-600 hover:to-slate-700"
+                  className="px-5 py-3 flex items-center space-x-2 transition-all duration-200 bg-slate-700/50 text-slate-200 hover:text-white hover:bg-gradient-to-r hover:from-green-500 hover:to-green-600"
                 >
                   <Upload size={18} />
                   <span className="font-medium">Import</span>
@@ -451,14 +456,22 @@ const TargetsLaravelCompatible: React.FC = () => {
               
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-slate-800 text-white rounded-lg hover:from-slate-800 hover:to-slate-900 transition-all duration-200 shadow-lg hover:shadow-xl"
+                className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl ${
+                  showFilters 
+                    ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white hover:from-orange-700 hover:to-orange-800' 
+                    : 'bg-gradient-to-r from-slate-700 to-slate-800 text-white hover:from-orange-600 hover:to-orange-700'
+                }`}
               >
                 <Filter size={20} />
                 <span className="font-medium">{showFilters ? 'Hide' : 'Show'} Filters</span>
               </button>
               <button
                 onClick={() => setShowTableSettings(!showTableSettings)}
-                className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-slate-800 text-white rounded-lg hover:from-slate-800 hover:to-slate-900 transition-all duration-200 border border-slate-600/50 shadow-lg hover:shadow-xl"
+                className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 border border-slate-600/50 shadow-lg hover:shadow-xl ${
+                  showTableSettings 
+                    ? 'bg-gradient-to-r from-cyan-600 to-cyan-700 text-white hover:from-cyan-700 hover:to-cyan-800' 
+                    : 'bg-gradient-to-r from-slate-700 to-slate-800 text-white hover:from-cyan-600 hover:to-cyan-700'
+                }`}
               >
                 <Settings size={20} />
                 <span className="font-medium">Table Settings</span>
@@ -478,6 +491,28 @@ const TargetsLaravelCompatible: React.FC = () => {
         </div>
       </div>
 
+
+      {/* Table Settings Panel */}
+      {showTableSettings && (
+        <div className="bg-slate-800/50 backdrop-blur-sm border-b border-slate-700/50">
+          <div className="max-w-7xl mx-auto px-8 py-4">
+            <h3 className="text-lg font-semibold text-white mb-4">Table Column Visibility</h3>
+            <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
+              {Object.entries(visibleColumns).map(([column, isVisible]) => (
+                <label key={column} className="flex items-center space-x-2 text-sm text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={isVisible}
+                    onChange={(e) => setVisibleColumns(prev => ({...prev, [column]: e.target.checked}))}
+                    className="rounded border-slate-500 bg-slate-600 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-800"
+                  />
+                  <span className="capitalize">{column.replace('_', ' ')}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Improved Filters Panel */}
       {showFilters && (
@@ -510,88 +545,112 @@ const TargetsLaravelCompatible: React.FC = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">County</label>
-                <select
-                  value={filters.property_county}
-                  onChange={(e) => setFilters(prev => ({ ...prev, property_county: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                <Select 
+                  value={filters.property_county} 
+                  onValueChange={(value: string) => setFilters(prev => ({ ...prev, property_county: value }))}
                 >
-                  <option value="">All Counties</option>
-                  {TEXAS_COUNTIES.map(county => (
-                    <option key={county} value={county.toLowerCase()}>{county}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                    <SelectValue placeholder="All Counties" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All Counties</SelectItem>
+                    {TEXAS_COUNTIES.map(county => (
+                      <SelectItem key={county} value={county.toLowerCase()} className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">{county}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Lead Status</label>
-                <select
-                  value={filters.lead_status}
-                  onChange={(e) => setFilters(prev => ({ ...prev, lead_status: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                <Select 
+                  value={filters.lead_status} 
+                  onValueChange={(value: string) => setFilters(prev => ({ ...prev, lead_status: value }))}
                 >
-                  <option value="">All Status</option>
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="interested">Interested</option>
-                  <option value="qualified">Qualified</option>
-                  <option value="hot">Hot Lead</option>
-                  <option value="cold">Cold Lead</option>
-                </select>
+                  <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All Status</SelectItem>
+                    <SelectItem value="new" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">New</SelectItem>
+                    <SelectItem value="contacted" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">Contacted</SelectItem>
+                    <SelectItem value="interested" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">Interested</SelectItem>
+                    <SelectItem value="qualified" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">Qualified</SelectItem>
+                    <SelectItem value="hot" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">Hot Lead</SelectItem>
+                    <SelectItem value="cold" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">Cold Lead</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">BOTG Status</label>
-                <select
-                  value={filters.botg_status}
-                  onChange={(e) => setFilters(prev => ({ ...prev, botg_status: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                <Select 
+                  value={filters.botg_status} 
+                  onValueChange={(value: string) => setFilters(prev => ({ ...prev, botg_status: value }))}
                 >
-                  <option value="">All BOTG</option>
-                  <option value="pending">Pending</option>
-                  <option value="assigned">Assigned</option>
-                  <option value="completed">Completed</option>
-                </select>
+                  <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                    <SelectValue placeholder="All BOTG" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All BOTG</SelectItem>
+                    <SelectItem value="pending" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">Pending</SelectItem>
+                    <SelectItem value="assigned" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">Assigned</SelectItem>
+                    <SelectItem value="completed" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Priority</label>
-                <select
-                  value={filters.priority}
-                  onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                <Select 
+                  value={filters.priority} 
+                  onValueChange={(value: string) => setFilters(prev => ({ ...prev, priority: value }))}
                 >
-                  <option value="">All Priority</option>
-                  <option value="urgent">🔥 Urgent</option>
-                  <option value="high">🟠 High</option>
-                  <option value="medium">🟡 Medium</option>
-                  <option value="low">🟢 Low</option>
-                </select>
+                  <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                    <SelectValue placeholder="All Priority" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All Priority</SelectItem>
+                    <SelectItem value="urgent" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🔥 Urgent</SelectItem>
+                    <SelectItem value="high" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🟠 High</SelectItem>
+                    <SelectItem value="medium" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🟡 Medium</SelectItem>
+                    <SelectItem value="low" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🟢 Low</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Safety</label>
-                <select
-                  value={filters.is_dangerous}
-                  onChange={(e) => setFilters(prev => ({ ...prev, is_dangerous: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                <Select 
+                  value={filters.is_dangerous} 
+                  onValueChange={(value: string) => setFilters(prev => ({ ...prev, is_dangerous: value }))}
                 >
-                  <option value="">All Safety Levels</option>
-                  <option value="0">✅ Safe</option>
-                  <option value="1">⚠️ Dangerous</option>
-                </select>
+                  <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                    <SelectValue placeholder="All Safety Levels" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All Safety Levels</SelectItem>
+                    <SelectItem value="0" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">✅ Safe</SelectItem>
+                    <SelectItem value="1" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">⚠️ Dangerous</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Contact Type</label>
-                <select
-                  value={filters.is_business}
-                  onChange={(e) => setFilters(prev => ({ ...prev, is_business: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                <Select 
+                  value={filters.is_business} 
+                  onValueChange={(value: string) => setFilters(prev => ({ ...prev, is_business: value }))}
                 >
-                  <option value="">All Types</option>
-                  <option value="0">👤 Individual</option>
-                  <option value="1">🏢 Business</option>
-                </select>
+                  <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All Types</SelectItem>
+                    <SelectItem value="0" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">👤 Individual</SelectItem>
+                    <SelectItem value="1" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🏢 Business</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -627,30 +686,38 @@ const TargetsLaravelCompatible: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Search Radius</label>
-                      <select
-                        value={filters.radius}
-                        onChange={(e) => setFilters(prev => ({ ...prev, radius: e.target.value }))}
-                        className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      <Select 
+                        value={filters.radius} 
+                        onValueChange={(value: string) => setFilters(prev => ({ ...prev, radius: value }))}
                       >
-                        <option value="10">10 miles</option>
-                        <option value="25">25 miles</option>
-                        <option value="50">50 miles</option>
-                        <option value="100">100 miles</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                          <SelectValue placeholder="Search Radius" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                          <SelectItem value="10" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">10 miles</SelectItem>
+                          <SelectItem value="25" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">25 miles</SelectItem>
+                          <SelectItem value="50" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">50 miles</SelectItem>
+                          <SelectItem value="100" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">100 miles</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Property Type</label>
-                      <select
-                        value={filters.property_type}
-                        onChange={(e) => setFilters(prev => ({ ...prev, property_type: e.target.value }))}
-                        className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      <Select 
+                        value={filters.property_type} 
+                        onValueChange={(value: string) => setFilters(prev => ({ ...prev, property_type: value }))}
                       >
-                        <option value="">All Property Types</option>
-                        <option value="residential">🏠 Residential</option>
-                        <option value="commercial">🏢 Commercial</option>
-                        <option value="industrial">🏭 Industrial</option>
-                        <option value="agricultural">🌾 Agricultural</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                          <SelectValue placeholder="All Property Types" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                          <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All Property Types</SelectItem>
+                          <SelectItem value="residential" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🏠 Residential</SelectItem>
+                          <SelectItem value="commercial" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🏢 Commercial</SelectItem>
+                          <SelectItem value="industrial" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🏭 Industrial</SelectItem>
+                          <SelectItem value="agricultural" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🌾 Agricultural</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
@@ -714,52 +781,68 @@ const TargetsLaravelCompatible: React.FC = () => {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Can Email</label>
-                      <select
-                        value={filters.can_email}
-                        onChange={(e) => setFilters(prev => ({ ...prev, can_email: e.target.value }))}
-                        className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      <Select 
+                        value={filters.can_email} 
+                        onValueChange={(value: string) => setFilters(prev => ({ ...prev, can_email: value }))}
                       >
-                        <option value="">All</option>
-                        <option value="1">✅ Can Email</option>
-                        <option value="0">❌ Cannot Email</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                          <SelectValue placeholder="All" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                          <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All</SelectItem>
+                          <SelectItem value="1" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">✅ Can Email</SelectItem>
+                          <SelectItem value="0" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">❌ Cannot Email</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Can Mail</label>
-                      <select
-                        value={filters.can_mail}
-                        onChange={(e) => setFilters(prev => ({ ...prev, can_mail: e.target.value }))}
-                        className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      <Select 
+                        value={filters.can_mail} 
+                        onValueChange={(value: string) => setFilters(prev => ({ ...prev, can_mail: value }))}
                       >
-                        <option value="">All</option>
-                        <option value="1">✅ Can Mail</option>
-                        <option value="0">❌ Cannot Mail</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                          <SelectValue placeholder="All" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                          <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All</SelectItem>
+                          <SelectItem value="1" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">✅ Can Mail</SelectItem>
+                          <SelectItem value="0" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">❌ Cannot Mail</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Lawsuit Status</label>
-                      <select
-                        value={filters.lawsuit_status}
-                        onChange={(e) => setFilters(prev => ({ ...prev, lawsuit_status: e.target.value }))}
-                        className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      <Select 
+                        value={filters.lawsuit_status} 
+                        onValueChange={(value: string) => setFilters(prev => ({ ...prev, lawsuit_status: value }))}
                       >
-                        <option value="">All Lawsuit Status</option>
-                        <option value="active">⚖️ Active Lawsuit</option>
-                        <option value="pending">⏳ Pending</option>
-                        <option value="none">✅ No Lawsuit</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                          <SelectValue placeholder="All Lawsuit Status" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                          <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All Lawsuit Status</SelectItem>
+                          <SelectItem value="active" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">⚖️ Active Lawsuit</SelectItem>
+                          <SelectItem value="pending" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">⏳ Pending</SelectItem>
+                          <SelectItem value="none" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">✅ No Lawsuit</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Has Mortgage</label>
-                      <select
-                        value={filters.has_mortgage}
-                        onChange={(e) => setFilters(prev => ({ ...prev, has_mortgage: e.target.value }))}
-                        className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      <Select 
+                        value={filters.has_mortgage} 
+                        onValueChange={(value: string) => setFilters(prev => ({ ...prev, has_mortgage: value }))}
                       >
-                        <option value="">All</option>
-                        <option value="1">🏠 Has Mortgage</option>
-                        <option value="0">💳 No Mortgage</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-slate-700/80 border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-500/50">
+                          <SelectValue placeholder="All" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-2xl max-h-80 shadow-2xl z-[60] overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                          <SelectItem value="" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 font-medium border-b border-slate-600/30 mb-2 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">All</SelectItem>
+                          <SelectItem value="1" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">🏠 Has Mortgage</SelectItem>
+                          <SelectItem value="0" className="text-slate-200 hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/25 hover:to-cyan-500/20 hover:text-white hover:shadow-lg hover:shadow-blue-500/20 focus:bg-blue-600/40 focus:text-white cursor-pointer transition-all duration-300 rounded-lg mx-1 my-0.5 px-4 py-2.5 border border-transparent hover:border-blue-400/30 backdrop-blur-sm">💳 No Mortgage</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
@@ -792,14 +875,21 @@ const TargetsLaravelCompatible: React.FC = () => {
 
       {/* Import Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 border-b border-slate-700">
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowImportModal(false);
+            }
+          }}
+        >
+          <div className="bg-slate-800 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-700">
+            <div className="px-6 py-4 border-b border-slate-700 bg-gradient-to-r from-slate-800 to-slate-700">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-semibold text-white">Import Tax Lien Data</h3>
                 <button
                   onClick={() => setShowImportModal(false)}
-                  className="text-slate-400 hover:text-white transition-colors"
+                  className="text-slate-400 hover:text-white transition-colors p-1 rounded-md hover:bg-slate-600"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -811,6 +901,7 @@ const TargetsLaravelCompatible: React.FC = () => {
               <CSVUpload
                 onDataParsed={(data) => {
                   console.log('Imported data:', data);
+                  loadTargets(); // Refresh targets after import
                   setShowImportModal(false);
                 }}
                 onError={(error) => {
@@ -957,16 +1048,20 @@ const TargetsLaravelCompatible: React.FC = () => {
           <div className="bg-slate-700 px-4 py-3 flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-400">Show</span>
-              <select
-                value={itemsPerPage}
-                onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                className="px-3 py-1 bg-slate-600 border border-slate-500 rounded text-gray-100 text-sm"
+              <Select 
+                value={itemsPerPage.toString()} 
+                onValueChange={(value: string) => setItemsPerPage(Number(value))}
               >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
+                <SelectTrigger className="w-20 bg-slate-600 border-slate-500 text-white rounded focus:ring-2 focus:ring-blue-500/50 text-sm h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gradient-to-br from-slate-800/98 via-slate-900/95 to-slate-800/98 backdrop-blur-xl border border-slate-500/40 rounded-xl shadow-2xl z-[70] overflow-hidden">
+                  <SelectItem value="10" className="text-slate-200 hover:bg-blue-600/30 focus:bg-blue-600/40 cursor-pointer transition-all duration-200 text-sm">10</SelectItem>
+                  <SelectItem value="20" className="text-slate-200 hover:bg-blue-600/30 focus:bg-blue-600/40 cursor-pointer transition-all duration-200 text-sm">20</SelectItem>
+                  <SelectItem value="50" className="text-slate-200 hover:bg-blue-600/30 focus:bg-blue-600/40 cursor-pointer transition-all duration-200 text-sm">50</SelectItem>
+                  <SelectItem value="100" className="text-slate-200 hover:bg-blue-600/30 focus:bg-blue-600/40 cursor-pointer transition-all duration-200 text-sm">100</SelectItem>
+                </SelectContent>
+              </Select>
               <span className="text-sm text-gray-400">per page</span>
             </div>
             

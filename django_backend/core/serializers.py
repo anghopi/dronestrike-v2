@@ -9,7 +9,9 @@ from decimal import Decimal
 from .models import (
     Company, UserProfile, County, Property, Lead, 
     Mission, MissionRoute, MissionRoutePoint, MissionLog, MissionPhoto,
-    Device, MissionDeclineReason
+    Device, MissionDeclineReason,
+    TLCClient, TLCClientAddress, TLCTaxInfo, TLCPropertyValuation,
+    TLCLoanInfo, TLCClientNote, TLCImportJob, TLCImportError
 )
 from .services import FinancialCalculationService, PropertyScoringService
 
@@ -434,3 +436,156 @@ class RouteOptimizationRequestSerializer(serializers.Serializer):
             )
         
         return value
+
+
+# TLC Serializers
+# Serializers for Tax Lien Capital client management
+
+class TLCClientAddressSerializer(serializers.ModelSerializer):
+    """Serializer for TLC client addresses"""
+    class Meta:
+        model = TLCClientAddress
+        fields = ['address_type', 'street_1', 'street_2', 'city', 'state', 'zip_code', 'county']
+
+
+class TLCTaxInfoSerializer(serializers.ModelSerializer):
+    """Serializer for TLC tax information"""
+    class Meta:
+        model = TLCTaxInfo
+        fields = [
+            'account_number', 'tax_year', 'original_tax_amount', 'penalties_interest',
+            'attorney_fees', 'total_amount_due', 'tax_sale_date', 'lawsuit_status'
+        ]
+
+
+class TLCPropertyValuationSerializer(serializers.ModelSerializer):
+    """Serializer for TLC property valuation"""
+    class Meta:
+        model = TLCPropertyValuation
+        fields = [
+            'assessed_land_value', 'assessed_improvement_value', 'assessed_total_value',
+            'market_land_value', 'market_improvement_value', 'market_total_value',
+            'estimated_purchase_price'
+        ]
+
+
+class TLCLoanInfoSerializer(serializers.ModelSerializer):
+    """Serializer for TLC loan information"""
+    class Meta:
+        model = TLCLoanInfo
+        fields = [
+            'loan_amount', 'interest_rate', 'apr', 'term_months', 'monthly_payment',
+            'total_payment', 'loan_to_value_ratio', 'status', 'application_date',
+            'funding_date', 'payoff_date'
+        ]
+
+
+class TLCClientNoteSerializer(serializers.ModelSerializer):
+    """Serializer for TLC client notes"""
+    class Meta:
+        model = TLCClientNote
+        fields = ['id', 'content', 'note_type', 'created_by', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class TLCClientSerializer(serializers.ModelSerializer):
+    """Comprehensive TLC client serializer"""
+    # Related data
+    mailing_address = serializers.SerializerMethodField()
+    property_address = serializers.SerializerMethodField()
+    tax_info = TLCTaxInfoSerializer(read_only=True)
+    property_valuation = TLCPropertyValuationSerializer(read_only=True)
+    loan_info = TLCLoanInfoSerializer(read_only=True)
+    notes = TLCClientNoteSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = TLCClient
+        fields = [
+            'id', 'client_number', 'first_name', 'last_name', 'email',
+            'phone_primary', 'phone_secondary', 'ssn_last_four', 'date_of_birth',
+            'status', 'workflow_stage', 'lead_source', 'assigned_agent',
+            'mailing_address', 'property_address', 'tax_info', 'property_valuation',
+            'loan_info', 'notes', 'created_at', 'updated_at', 'last_contact', 'last_activity'
+        ]
+        read_only_fields = ['id', 'client_number', 'created_at', 'updated_at']
+    
+    def get_mailing_address(self, obj):
+        mailing = obj.addresses.filter(address_type='mailing').first()
+        return TLCClientAddressSerializer(mailing).data if mailing else None
+    
+    def get_property_address(self, obj):
+        property_addr = obj.addresses.filter(address_type='property').first()
+        return TLCClientAddressSerializer(property_addr).data if property_addr else None
+
+
+class TLCClientCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating TLC clients with nested data"""
+    mailing_address = TLCClientAddressSerializer()
+    property_address = TLCClientAddressSerializer()
+    tax_info = TLCTaxInfoSerializer()
+    property_valuation = TLCPropertyValuationSerializer(required=False)
+    loan_info = TLCLoanInfoSerializer(required=False)
+    
+    class Meta:
+        model = TLCClient
+        fields = [
+            'first_name', 'last_name', 'email', 'phone_primary', 'phone_secondary',
+            'ssn_last_four', 'date_of_birth', 'status', 'workflow_stage',
+            'lead_source', 'assigned_agent', 'mailing_address', 'property_address',
+            'tax_info', 'property_valuation', 'loan_info'
+        ]
+    
+    def create(self, validated_data):
+        # Extract nested data
+        mailing_data = validated_data.pop('mailing_address')
+        property_data = validated_data.pop('property_address')
+        tax_data = validated_data.pop('tax_info')
+        valuation_data = validated_data.pop('property_valuation', None)
+        loan_data = validated_data.pop('loan_info', None)
+        
+        # Create client
+        client = TLCClient.objects.create(**validated_data)
+        
+        # Create related records
+        TLCClientAddress.objects.create(client=client, address_type='mailing', **mailing_data)
+        TLCClientAddress.objects.create(client=client, address_type='property', **property_data)
+        TLCTaxInfo.objects.create(client=client, **tax_data)
+        
+        if valuation_data:
+            TLCPropertyValuation.objects.create(client=client, **valuation_data)
+        
+        if loan_data:
+            TLCLoanInfo.objects.create(client=client, **loan_data)
+        
+        return client
+
+
+class TLCImportErrorSerializer(serializers.ModelSerializer):
+    """Serializer for TLC import errors"""
+    class Meta:
+        model = TLCImportError
+        fields = ['row_number', 'column', 'error_message', 'raw_data']
+
+
+class TLCImportJobSerializer(serializers.ModelSerializer):
+    """Serializer for TLC import jobs"""
+    errors = TLCImportErrorSerializer(many=True, read_only=True)
+    validation_summary = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TLCImportJob
+        fields = [
+            'id', 'filename', 'file_size', 'total_rows', 'processed_rows',
+            'successful_rows', 'failed_rows', 'status', 'progress_percentage',
+            'started_at', 'completed_at', 'created_at', 'errors', 'validation_summary'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_validation_summary(self, obj):
+        return {
+            'duplicate_clients': obj.duplicate_clients,
+            'invalid_emails': obj.invalid_emails,
+            'missing_required_fields': obj.missing_required_fields,
+            'invalid_tax_amounts': obj.invalid_tax_amounts,
+            'invalid_dates': obj.invalid_dates,
+        }

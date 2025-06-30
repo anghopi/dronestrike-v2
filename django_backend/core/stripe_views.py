@@ -5,7 +5,9 @@ Based on Token Values.xlsx pricing structure
 import stripe
 import json
 from decimal import Decimal
+from datetime import timedelta
 from django.conf import settings
+from django.utils import timezone
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -24,7 +26,7 @@ from .models import (
 from .stripe_config import TOKEN_PRICING
 
 # Initialize Stripe with your secret key
-stripe.api_key = settings.STRIPE_SECRET_KEY if hasattr(settings, 'STRIPE_SECRET_KEY') else 'sk_test_...'
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -57,10 +59,9 @@ def get_user_token_balance(request):
     )
     
     return Response({
-        'regular_tokens': regular_balance,
-        'mail_tokens': mail_balance,
-        'profile_tokens': user_profile.tokens,
-        'profile_mail_tokens': user_profile.mail_tokens
+        'regular_tokens': user_profile.tokens,
+        'mail_tokens': user_profile.mail_tokens,
+        'last_updated': user_profile.updated_at.isoformat() if hasattr(user_profile, 'updated_at') else timezone.now().isoformat()
     })
 
 @api_view(['POST'])
@@ -249,88 +250,223 @@ def create_subscription_intent(request):
 @csrf_exempt
 def stripe_webhook(request):
     """Handle Stripe webhooks for payment confirmations"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     payload = request.body
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
-    endpoint_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', 'whsec_...')
+    endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
     
     try:
         event = stripe.Webhook.construct_event(
             payload, sig_header, endpoint_secret
         )
-    except ValueError:
+        logger.info(f"Stripe webhook received: {event['type']}")
+    except ValueError as e:
+        logger.error(f"Invalid payload in Stripe webhook: {e}")
         return HttpResponse(status=400)
-    except stripe.error.SignatureVerificationError:
+    except stripe.error.SignatureVerificationError as e:
+        logger.error(f"Invalid signature in Stripe webhook: {e}")
         return HttpResponse(status=400)
     
     # Handle the event
-    if event['type'] == 'payment_intent.succeeded':
-        payment_intent = event['data']['object']
-        handle_token_purchase_success(payment_intent)
+    try:
+        if event['type'] == 'payment_intent.succeeded':
+            payment_intent = event['data']['object']
+            logger.info(f"Processing payment_intent.succeeded: {payment_intent['id']}")
+            handle_token_purchase_success(payment_intent)
+        
+        elif event['type'] == 'invoice.payment_succeeded':
+            invoice = event['data']['object']
+            logger.info(f"Processing invoice.payment_succeeded: {invoice['id']}")
+            handle_subscription_payment_success(invoice)
+        
+        elif event['type'] == 'customer.subscription.deleted':
+            subscription = event['data']['object']
+            logger.info(f"Processing customer.subscription.deleted: {subscription['id']}")
+            handle_subscription_cancelled(subscription)
+        
+        else:
+            logger.info(f"Unhandled webhook event type: {event['type']}")
     
-    elif event['type'] == 'invoice.payment_succeeded':
-        invoice = event['data']['object']
-        handle_subscription_payment_success(invoice)
-    
-    elif event['type'] == 'customer.subscription.deleted':
-        subscription = event['data']['object']
-        handle_subscription_cancelled(subscription)
+    except Exception as e:
+        logger.error(f"Error processing Stripe webhook {event['type']}: {e}")
+        return HttpResponse(status=500)
     
     return HttpResponse(status=200)
 
 def handle_token_purchase_success(payment_intent):
     """Handle successful token purchase"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         purchase = TokenPackagePurchase.objects.get(
             stripe_payment_intent_id=payment_intent['id']
         )
+        
+        # Prevent double processing
+        if purchase.payment_status == 'succeeded':
+            logger.info(f"Payment {payment_intent['id']} already processed, skipping")
+            return
+        
         purchase.payment_status = 'succeeded'
         purchase.save()
         
         # Credit tokens to user
         user = purchase.user
+        logger.info(f"Crediting tokens to user {user.id} for purchase {purchase.id}")
         
         if purchase.regular_tokens > 0:
+            tokens_before = user.profile.tokens
             TokenTransaction.objects.create(
                 user=user,
                 token_type='regular',
                 transaction_type='purchase',
-                tokens_before=user.profile.tokens,
+                tokens_before=tokens_before,
                 tokens_changed=purchase.regular_tokens,
-                tokens_after=user.profile.tokens + purchase.regular_tokens,
+                tokens_after=tokens_before + purchase.regular_tokens,
                 total_cost=purchase.total_price,
                 description=f'Token purchase: {purchase.package_name}',
                 stripe_payment_intent_id=payment_intent['id']
             )
             user.profile.tokens += purchase.regular_tokens
+            logger.info(f"Added {purchase.regular_tokens} regular tokens to user {user.id}")
         
         if purchase.mail_tokens > 0:
+            mail_tokens_before = user.profile.mail_tokens
             TokenTransaction.objects.create(
                 user=user,
                 token_type='mail',
                 transaction_type='purchase',
-                tokens_before=user.profile.mail_tokens,
+                tokens_before=mail_tokens_before,
                 tokens_changed=purchase.mail_tokens,
-                tokens_after=user.profile.mail_tokens + purchase.mail_tokens,
+                tokens_after=mail_tokens_before + purchase.mail_tokens,
                 total_cost=purchase.total_price,
                 description=f'Mail token purchase: {purchase.package_name}',
                 stripe_payment_intent_id=payment_intent['id']
             )
             user.profile.mail_tokens += purchase.mail_tokens
+            logger.info(f"Added {purchase.mail_tokens} mail tokens to user {user.id}")
         
         user.profile.save()
+        logger.info(f"Successfully processed token purchase for user {user.id}")
         
     except TokenPackagePurchase.DoesNotExist:
-        pass
+        logger.error(f"TokenPackagePurchase not found for payment_intent: {payment_intent['id']}")
+    except Exception as e:
+        logger.error(f"Error processing token purchase success: {e}")
+        raise
 
 def handle_subscription_payment_success(invoice):
     """Handle successful subscription payment"""
-    # Implementation for subscription handling
-    pass
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get customer and user
+        customer_id = invoice['customer']
+        subscription_id = invoice['subscription']
+        
+        user_profile = UserProfile.objects.get(stripe_customer_id=customer_id)
+        user = user_profile.user
+        
+        logger.info(f"Processing subscription payment for user {user.id}")
+        
+        # Get or create subscription record
+        user_subscription, created = UserSubscription.objects.get_or_create(
+            user=user,
+            stripe_subscription_id=subscription_id,
+            defaults={
+                'plan_name': 'DroneStrike Professional',
+                'status': 'active',
+                'current_period_start': timezone.now(),
+                'current_period_end': timezone.now() + timedelta(days=30)
+            }
+        )
+        
+        if not created:
+            # Update existing subscription
+            user_subscription.status = 'active'
+            user_subscription.current_period_start = timezone.now()
+            user_subscription.current_period_end = timezone.now() + timedelta(days=30)
+            user_subscription.save()
+        
+        # Update user profile subscription status
+        user_profile.monthly_subscription_active = True
+        user_profile.save()
+        
+        # Record subscription payment transaction
+        TokenTransaction.objects.create(
+            user=user,
+            token_type='subscription',
+            transaction_type='subscription_payment',
+            tokens_before=0,
+            tokens_changed=0,
+            tokens_after=0,
+            total_cost=invoice['amount_paid'] / 100,  # Convert from cents
+            description=f'Subscription payment for {user_subscription.plan_name}',
+            stripe_invoice_id=invoice['id']
+        )
+        
+        logger.info(f"Successfully processed subscription payment for user {user.id}")
+        
+    except UserProfile.DoesNotExist:
+        logger.error(f"UserProfile not found for customer: {customer_id}")
+    except Exception as e:
+        logger.error(f"Error processing subscription payment: {e}")
+        raise
 
 def handle_subscription_cancelled(subscription):
     """Handle subscription cancellation"""
-    # Implementation for subscription cancellation
-    pass
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        customer_id = subscription['customer']
+        subscription_id = subscription['id']
+        
+        user_profile = UserProfile.objects.get(stripe_customer_id=customer_id)
+        user = user_profile.user
+        
+        logger.info(f"Processing subscription cancellation for user {user.id}")
+        
+        # Update subscription record
+        try:
+            user_subscription = UserSubscription.objects.get(
+                user=user,
+                stripe_subscription_id=subscription_id
+            )
+            user_subscription.status = 'cancelled'
+            user_subscription.cancelled_at = timezone.now()
+            user_subscription.save()
+        except UserSubscription.DoesNotExist:
+            logger.warning(f"UserSubscription not found for subscription {subscription_id}")
+        
+        # Update user profile
+        user_profile.monthly_subscription_active = False
+        user_profile.save()
+        
+        # Record cancellation transaction
+        TokenTransaction.objects.create(
+            user=user,
+            token_type='subscription',
+            transaction_type='subscription_cancelled',
+            tokens_before=0,
+            tokens_changed=0,
+            tokens_after=0,
+            total_cost=0,
+            description='Subscription cancelled',
+            stripe_subscription_id=subscription_id
+        )
+        
+        logger.info(f"Successfully processed subscription cancellation for user {user.id}")
+        
+    except UserProfile.DoesNotExist:
+        logger.error(f"UserProfile not found for customer: {customer_id}")
+    except Exception as e:
+        logger.error(f"Error processing subscription cancellation: {e}")
+        raise
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -368,3 +504,161 @@ def get_purchase_history(request):
         'purchases': purchase_data,
         'transactions': transaction_data
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_subscription(request):
+    """Get user's current subscription status"""
+    try:
+        user_subscription = UserSubscription.objects.filter(
+            user=request.user,
+            status='active'
+        ).first()
+        
+        if user_subscription:
+            return Response({
+                'subscription': {
+                    'id': user_subscription.id,
+                    'plan_name': user_subscription.plan_name,
+                    'status': user_subscription.status,
+                    'current_period_start': user_subscription.current_period_start.isoformat(),
+                    'current_period_end': user_subscription.current_period_end.isoformat(),
+                    'stripe_subscription_id': user_subscription.stripe_subscription_id
+                },
+                'has_subscription': True
+            })
+        else:
+            return Response({
+                'subscription': None,
+                'has_subscription': False
+            })
+            
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_subscription(request):
+    """Cancel user's subscription"""
+    try:
+        user_subscription = UserSubscription.objects.filter(
+            user=request.user,
+            status='active'
+        ).first()
+        
+        if not user_subscription:
+            return Response({'error': 'No active subscription found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Cancel in Stripe
+        stripe.Subscription.delete(user_subscription.stripe_subscription_id)
+        
+        # Update local record
+        user_subscription.status = 'cancelled'
+        user_subscription.cancelled_at = timezone.now()
+        user_subscription.save()
+        
+        # Update user profile
+        request.user.profile.monthly_subscription_active = False
+        request.user.profile.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Subscription cancelled successfully'
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reactivate_subscription(request):
+    """Reactivate a cancelled subscription"""
+    try:
+        # Get the last subscription for the user
+        user_subscription = UserSubscription.objects.filter(
+            user=request.user
+        ).order_by('-created_at').first()
+        
+        if not user_subscription:
+            return Response({'error': 'No subscription history found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Create new subscription with same plan
+        data = request.data
+        plan_name = data.get('plan_name', 'DroneStrike Professional')
+        
+        # This would use the same logic as create_subscription_intent
+        # For now, redirect to subscription creation
+        return Response({
+            'message': 'Please create a new subscription',
+            'redirect_to_subscription': True
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_payment_method(request):
+    """Update subscription payment method"""
+    try:
+        data = request.data
+        payment_method_id = data.get('payment_method_id')
+        
+        if not payment_method_id:
+            return Response({'error': 'Payment method ID required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        user_profile = request.user.profile
+        if not user_profile.stripe_customer_id:
+            return Response({'error': 'No Stripe customer found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Attach payment method to customer
+        stripe.PaymentMethod.attach(
+            payment_method_id,
+            customer=user_profile.stripe_customer_id
+        )
+        
+        # Set as default payment method
+        stripe.Customer.modify(
+            user_profile.stripe_customer_id,
+            invoice_settings={'default_payment_method': payment_method_id}
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Payment method updated successfully'
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_billing_portal_url(request):
+    """Get Stripe customer portal URL for subscription management"""
+    try:
+        user_profile = request.user.profile
+        if not user_profile.stripe_customer_id:
+            return Response({'error': 'No Stripe customer found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
+        # Create billing portal session
+        session = stripe.billing_portal.Session.create(
+            customer=user_profile.stripe_customer_id,
+            return_url=request.build_absolute_uri('/dashboard/')
+        )
+        
+        return Response({
+            'portal_url': session.url
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

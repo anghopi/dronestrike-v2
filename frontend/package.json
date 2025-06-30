@@ -71,6 +71,7 @@
     "jest-environment-jsdom": "^30.0.0",
     "msw": "^2.10.2",
     "postcss": "^8.5.5",
+    "serve": "^14.2.4",
     "tailwindcss": "^4.1.10"
   }
 }
