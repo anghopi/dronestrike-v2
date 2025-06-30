@@ -25,7 +25,7 @@ echo "Pulling latest code..."
 git pull origin main
 echo "Running deployment script..."
 chmod +x deploy.sh
-sudo ./deploy.sh
+./deploy.sh
 echo "Deployment completed!"
 EOF
 

@@ -25,16 +25,16 @@ echo "Backend restarted successfully"
 echo "Deploying frontend..."
 cd ../frontend
 if [ -d "build" ]; then
-    sudo cp -r build/* /var/www/dronestrike-v2/
-    sudo systemctl restart nginx
+    echo "dronestrike-v2-prod.XGT13ds" | sudo -S cp -r build/* /var/www/dronestrike-v2/
+    echo "dronestrike-v2-prod.XGT13ds" | sudo -S systemctl restart nginx
     echo "Frontend deployed successfully"
 else
     echo "No build directory found - building frontend..."
     npm ci --silent
     npm run build --silent
     if [ -d "build" ]; then
-        sudo cp -r build/* /var/www/dronestrike-v2/
-        sudo systemctl restart nginx
+        echo "dronestrike-v2-prod.XGT13ds" | sudo -S cp -r build/* /var/www/dronestrike-v2/
+        echo "dronestrike-v2-prod.XGT13ds" | sudo -S systemctl restart nginx
         echo "Frontend built and deployed successfully"
     else
         echo "Frontend build failed"
