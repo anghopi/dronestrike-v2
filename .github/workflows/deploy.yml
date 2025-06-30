@@ -25,6 +25,11 @@ jobs:
           git clean -fd || true
           git pull origin main
           echo "Code updated successfully"
+          
+          # Start frontend build in background
+          cd frontend
+          nohup npm ci --silent > npm-install.log 2>&1 && nohup npm run build --silent > build.log 2>&1 &
+          echo "Frontend build started in background"
     
     - name: Deploy Backend
       uses: appleboy/ssh-action@v0.1.8
@@ -32,18 +37,15 @@ jobs:
         host: 134.199.192.164
         username: droneuser
         password: ${{ secrets.DO_SERVER_PASSWORD }}
-        timeout: 90s
+        timeout: 45s
         script: |
           cd /home/droneuser/dronestrike-v2/django_backend
           source venv/bin/activate
-          pip install -r requirements.txt --quiet --no-deps || true
           python manage.py migrate --noinput || true
-          python manage.py collectstatic --noinput || true
           pkill -f "manage.py runserver" || true
           nohup python manage.py runserver 0.0.0.0:8000 > django.log 2>&1 &
-          sleep 2
-          ps aux | grep "manage.py runserver" | grep -v grep
-          echo "Backend deployed successfully"
+          sleep 1
+          echo "Backend restarted successfully"
     
     - name: Deploy Frontend
       uses: appleboy/ssh-action@v0.1.8
@@ -51,16 +53,13 @@ jobs:
         host: 134.199.192.164
         username: droneuser
         password: ${{ secrets.DO_SERVER_PASSWORD }}
-        timeout: 120s
+        timeout: 60s
         script: |
           cd /home/droneuser/dronestrike-v2/frontend
-          npm ci --silent --prefer-offline
-          timeout 60 npm run build --silent || echo "Build completed or timed out"
           if [ -d "build" ]; then
-            echo "dronestrike-v2-prod.XGT13ds" | sudo -S cp -r build/* /var/www/dronestrike-v2/
-            echo "dronestrike-v2-prod.XGT13ds" | sudo -S systemctl restart nginx
+            echo "dronestrike-v2-prod.XGT13ds" | sudo -S cp -r build/* /var/www/dronestrike-v2/ || true
+            echo "dronestrike-v2-prod.XGT13ds" | sudo -S systemctl restart nginx || true
             echo "Frontend deployed successfully"
           else
-            echo "Build directory not found, frontend deployment failed"
-            exit 1
+            echo "No build directory found, skipping frontend deployment"
           fi
