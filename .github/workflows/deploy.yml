@@ -19,6 +19,9 @@ jobs:
         password: ${{ secrets.DO_SERVER_PASSWORD }}
         script: |
           cd /home/droneuser/dronestrike-v2
+          git fetch origin main
+          git stash push -m "Auto-stash before deployment" || true
+          git clean -fd || true
           git pull origin main
           
           # Backend deployment
