@@ -18,12 +18,12 @@ urlpatterns = [
     # Django Admin
     path('admin/', admin.site.urls),
     
-    # Authentication endpoints
-    path('auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('auth/register/', UserRegistrationView.as_view(), name='user_register'),
-    path('auth/me/', CurrentUserView.as_view(), name='current_user'),
-    path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('auth/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    # Authentication endpoints (with API v1 prefix to match frontend)
+    path('api/v1/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/v1/auth/register/', UserRegistrationView.as_view(), name='user_register'),
+    path('api/v1/auth/me/', CurrentUserView.as_view(), name='current_user'),
+    path('api/v1/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/v1/auth/verify/', TokenVerifyView.as_view(), name='token_verify'),
     
     # Core API endpoints
     path('', include('core.urls')),

@@ -6,7 +6,13 @@ DRF serializers for core models with business logic integration
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from decimal import Decimal
-from .models import Company, UserProfile, County, Property, Lead
+from .models import (
+    Company, UserProfile, County, Property, Lead, 
+    Mission, MissionRoute, MissionRoutePoint, MissionLog, MissionPhoto,
+    Device, MissionDeclineReason,
+    TLCClient, TLCClientAddress, TLCTaxInfo, TLCPropertyValuation,
+    TLCLoanInfo, TLCClientNote, TLCImportJob, TLCImportError
+)
 from .services import FinancialCalculationService, PropertyScoringService
 
 
@@ -251,3 +257,335 @@ class TokenTransactionSerializer(serializers.Serializer):
     ])
     quantity = serializers.IntegerField(default=1, min_value=1)
     reference_id = serializers.CharField(required=False, allow_blank=True)
+
+
+class DeviceSerializer(serializers.ModelSerializer):
+    """Device serializer for mission creation"""
+    class Meta:
+        model = Device
+        fields = ['id', 'device_id', 'device_name', 'device_type', 'push_token', 'is_active', 'last_seen', 'created_at']
+        read_only_fields = ['created_at', 'last_seen']
+
+
+class MissionDeclineReasonSerializer(serializers.ModelSerializer):
+    """Mission decline reason serializer"""
+    class Meta:
+        model = MissionDeclineReason
+        fields = ['id', 'reason', 'is_safety_related', 'is_active', 'display_order']
+
+
+class MissionPhotoSerializer(serializers.ModelSerializer):
+    """Mission photo serializer with GPS validation"""
+    class Meta:
+        model = MissionPhoto
+        fields = ['id', 'photo', 'lat', 'lng', 'is_valid_location', 'distance_from_target', 'caption', 'created_at']
+        read_only_fields = ['created_at', 'is_valid_location', 'distance_from_target']
+
+
+class MissionLogSerializer(serializers.ModelSerializer):
+    """Mission log serializer"""
+    class Meta:
+        model = MissionLog
+        fields = ['id', 'lat', 'lng', 'radius', 'filters', 'amount_due_min', 'amount_due_max', 'results_count', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class MissionRoutePointSerializer(serializers.ModelSerializer):
+    """Route point serializer with prospect details"""
+    prospect = LeadSerializer(read_only=True)
+    prospect_id = serializers.IntegerField(write_only=True)
+    
+    class Meta:
+        model = MissionRoutePoint
+        fields = [
+            'id', 'prospect', 'prospect_id', 'lat', 'lng', 'provided_index', 'optimized_index',
+            'length_in_meters', 'travel_time_in_seconds', 'points', 'status', 'visited_at',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class MissionRouteSerializer(serializers.ModelSerializer):
+    """Mission route serializer with optimization data"""
+    route_points = MissionRoutePointSerializer(many=True, read_only=True)
+    user = UserSerializer(read_only=True)
+    total_points = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MissionRoute
+        fields = [
+            'id', 'user', 'status', 'optimization_url', 'is_optimized',
+            'total_distance_meters', 'total_time_seconds', 'route_points', 'total_points',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def get_total_points(self, obj):
+        return obj.route_points.count()
+
+
+class MissionSerializer(serializers.ModelSerializer):
+    """Mission serializer with full business logic"""
+    user = UserSerializer(read_only=True)
+    prospect = LeadSerializer(read_only=True)
+    prospect_id = serializers.IntegerField(write_only=True)
+    device = DeviceSerializer(read_only=True)
+    device_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    decline_reason = MissionDeclineReasonSerializer(read_only=True)
+    decline_reason_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    
+    # Related data
+    photos = MissionPhotoSerializer(many=True, read_only=True)
+    logs = MissionLogSerializer(many=True, read_only=True)
+    
+    # Computed fields
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    distance_traveled = serializers.SerializerMethodField()
+    can_be_declined = serializers.ReadOnlyField()
+    can_be_paused = serializers.ReadOnlyField()
+    is_active = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Mission
+        fields = [
+            'id', 'user', 'prospect', 'prospect_id', 'device', 'device_id', 'status', 'status_display',
+            'decline_reason', 'decline_reason_id', 'lat_created', 'lng_created', 'lat_completed',
+            'lng_completed', 'completed_at', 'linked_with', 'link_type', 'is_ongoing', 'go_to_lead',
+            'purchase_offer', 'initial_amount_due', 'photos', 'logs', 'distance_traveled',
+            'can_be_declined', 'can_be_paused', 'is_active', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def get_distance_traveled(self, obj):
+        return obj.get_distance_traveled()
+
+
+class MissionCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating missions"""
+    prospect_id = serializers.IntegerField()
+    device_id = serializers.IntegerField(required=False, allow_null=True)
+    
+    class Meta:
+        model = Mission
+        fields = [
+            'prospect_id', 'device_id', 'lat_created', 'lng_created', 'linked_with', 'link_type',
+            'go_to_lead', 'purchase_offer', 'initial_amount_due'
+        ]
+    
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class MissionUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating missions"""
+    class Meta:
+        model = Mission
+        fields = [
+            'status', 'decline_reason_id', 'lat_completed', 'lng_completed', 'completed_at',
+            'purchase_offer', 'initial_amount_due', 'is_ongoing'
+        ]
+
+
+class MissionSearchSerializer(serializers.Serializer):
+    """Serializer for mission search parameters"""
+    lat = serializers.DecimalField(max_digits=17, decimal_places=14)
+    lng = serializers.DecimalField(max_digits=17, decimal_places=14)
+    radius = serializers.IntegerField(min_value=100, max_value=50000)  # meters
+    
+    # Property filters
+    property_type = serializers.ChoiceField(
+        choices=['single_family', 'multi_family', 'condo', 'townhouse', 'commercial', 'land', 'mobile_home'],
+        required=False
+    )
+    amount_due_min = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    amount_due_max = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    
+    # Lead filters
+    exclude_dangerous = serializers.BooleanField(default=True)
+    exclude_business = serializers.BooleanField(default=False)
+    exclude_do_not_contact = serializers.BooleanField(default=True)
+    
+    # Limit results
+    limit = serializers.IntegerField(default=50, min_value=1, max_value=200)
+
+
+class RouteOptimizationRequestSerializer(serializers.Serializer):
+    """Serializer for route optimization requests"""
+    prospect_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=2,
+        max_length=25
+    )
+    start_lat = serializers.DecimalField(max_digits=17, decimal_places=14, required=False)
+    start_lng = serializers.DecimalField(max_digits=17, decimal_places=14, required=False)
+    
+    def validate_prospect_ids(self, value):
+        # Check that all prospects exist and belong to user
+        user = self.context['request'].user
+        from .models import Lead
+        existing_prospects = Lead.objects.filter(
+            id__in=value,
+            owner=user
+        ).values_list('id', flat=True)
+        
+        missing_prospects = set(value) - set(existing_prospects)
+        if missing_prospects:
+            raise serializers.ValidationError(
+                f"Prospects not found or not owned by user: {list(missing_prospects)}"
+            )
+        
+        return value
+
+
+# TLC Serializers
+# Serializers for Tax Lien Capital client management
+
+class TLCClientAddressSerializer(serializers.ModelSerializer):
+    """Serializer for TLC client addresses"""
+    class Meta:
+        model = TLCClientAddress
+        fields = ['address_type', 'street_1', 'street_2', 'city', 'state', 'zip_code', 'county']
+
+
+class TLCTaxInfoSerializer(serializers.ModelSerializer):
+    """Serializer for TLC tax information"""
+    class Meta:
+        model = TLCTaxInfo
+        fields = [
+            'account_number', 'tax_year', 'original_tax_amount', 'penalties_interest',
+            'attorney_fees', 'total_amount_due', 'tax_sale_date', 'lawsuit_status'
+        ]
+
+
+class TLCPropertyValuationSerializer(serializers.ModelSerializer):
+    """Serializer for TLC property valuation"""
+    class Meta:
+        model = TLCPropertyValuation
+        fields = [
+            'assessed_land_value', 'assessed_improvement_value', 'assessed_total_value',
+            'market_land_value', 'market_improvement_value', 'market_total_value',
+            'estimated_purchase_price'
+        ]
+
+
+class TLCLoanInfoSerializer(serializers.ModelSerializer):
+    """Serializer for TLC loan information"""
+    class Meta:
+        model = TLCLoanInfo
+        fields = [
+            'loan_amount', 'interest_rate', 'apr', 'term_months', 'monthly_payment',
+            'total_payment', 'loan_to_value_ratio', 'status', 'application_date',
+            'funding_date', 'payoff_date'
+        ]
+
+
+class TLCClientNoteSerializer(serializers.ModelSerializer):
+    """Serializer for TLC client notes"""
+    class Meta:
+        model = TLCClientNote
+        fields = ['id', 'content', 'note_type', 'created_by', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class TLCClientSerializer(serializers.ModelSerializer):
+    """Comprehensive TLC client serializer"""
+    # Related data
+    mailing_address = serializers.SerializerMethodField()
+    property_address = serializers.SerializerMethodField()
+    tax_info = TLCTaxInfoSerializer(read_only=True)
+    property_valuation = TLCPropertyValuationSerializer(read_only=True)
+    loan_info = TLCLoanInfoSerializer(read_only=True)
+    notes = TLCClientNoteSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = TLCClient
+        fields = [
+            'id', 'client_number', 'first_name', 'last_name', 'email',
+            'phone_primary', 'phone_secondary', 'ssn_last_four', 'date_of_birth',
+            'status', 'workflow_stage', 'lead_source', 'assigned_agent',
+            'mailing_address', 'property_address', 'tax_info', 'property_valuation',
+            'loan_info', 'notes', 'created_at', 'updated_at', 'last_contact', 'last_activity'
+        ]
+        read_only_fields = ['id', 'client_number', 'created_at', 'updated_at']
+    
+    def get_mailing_address(self, obj):
+        mailing = obj.addresses.filter(address_type='mailing').first()
+        return TLCClientAddressSerializer(mailing).data if mailing else None
+    
+    def get_property_address(self, obj):
+        property_addr = obj.addresses.filter(address_type='property').first()
+        return TLCClientAddressSerializer(property_addr).data if property_addr else None
+
+
+class TLCClientCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating TLC clients with nested data"""
+    mailing_address = TLCClientAddressSerializer()
+    property_address = TLCClientAddressSerializer()
+    tax_info = TLCTaxInfoSerializer()
+    property_valuation = TLCPropertyValuationSerializer(required=False)
+    loan_info = TLCLoanInfoSerializer(required=False)
+    
+    class Meta:
+        model = TLCClient
+        fields = [
+            'first_name', 'last_name', 'email', 'phone_primary', 'phone_secondary',
+            'ssn_last_four', 'date_of_birth', 'status', 'workflow_stage',
+            'lead_source', 'assigned_agent', 'mailing_address', 'property_address',
+            'tax_info', 'property_valuation', 'loan_info'
+        ]
+    
+    def create(self, validated_data):
+        # Extract nested data
+        mailing_data = validated_data.pop('mailing_address')
+        property_data = validated_data.pop('property_address')
+        tax_data = validated_data.pop('tax_info')
+        valuation_data = validated_data.pop('property_valuation', None)
+        loan_data = validated_data.pop('loan_info', None)
+        
+        # Create client
+        client = TLCClient.objects.create(**validated_data)
+        
+        # Create related records
+        TLCClientAddress.objects.create(client=client, address_type='mailing', **mailing_data)
+        TLCClientAddress.objects.create(client=client, address_type='property', **property_data)
+        TLCTaxInfo.objects.create(client=client, **tax_data)
+        
+        if valuation_data:
+            TLCPropertyValuation.objects.create(client=client, **valuation_data)
+        
+        if loan_data:
+            TLCLoanInfo.objects.create(client=client, **loan_data)
+        
+        return client
+
+
+class TLCImportErrorSerializer(serializers.ModelSerializer):
+    """Serializer for TLC import errors"""
+    class Meta:
+        model = TLCImportError
+        fields = ['row_number', 'column', 'error_message', 'raw_data']
+
+
+class TLCImportJobSerializer(serializers.ModelSerializer):
+    """Serializer for TLC import jobs"""
+    errors = TLCImportErrorSerializer(many=True, read_only=True)
+    validation_summary = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TLCImportJob
+        fields = [
+            'id', 'filename', 'file_size', 'total_rows', 'processed_rows',
+            'successful_rows', 'failed_rows', 'status', 'progress_percentage',
+            'started_at', 'completed_at', 'created_at', 'errors', 'validation_summary'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_validation_summary(self, obj):
+        return {
+            'duplicate_clients': obj.duplicate_clients,
+            'invalid_emails': obj.invalid_emails,
+            'missing_required_fields': obj.missing_required_fields,
+            'invalid_tax_amounts': obj.invalid_tax_amounts,
+            'invalid_dates': obj.invalid_dates,
+        }

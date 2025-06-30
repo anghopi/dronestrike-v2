@@ -27,8 +27,9 @@ const navigation = [
     icon: TagIcon, 
     current: false,
     submenu: [
-      { name: 'Get New', href: '/targets/search' },
-      { name: 'My Targets', href: '/targets' }
+      { name: 'Targets List', href: '/targets' },
+      { name: 'Advanced View', href: '/targets-advanced' },
+      { name: 'Map View', href: '/targets-map' }
     ]
   },
   { 
@@ -37,6 +38,7 @@ const navigation = [
     icon: CommandLineIcon, 
     current: false,
     submenu: [
+      { name: 'BOTG Missions', href: '/mission-targets' },
       { name: 'Call List', href: '/missions/call-list' },
       { name: 'Tasks', href: '/missions/tasks' },
       { name: 'Opportunities', href: '/opportunities' }

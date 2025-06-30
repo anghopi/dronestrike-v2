@@ -22,6 +22,7 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0', c
 
 # Application definition
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -33,6 +34,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'channels',
     'corsheaders',
     'django_filters',
     'django_extensions',
@@ -41,7 +43,7 @@ INSTALLED_APPS = [
     'core',  # Core models and business logic
     'api',   # API endpoints
     'legacy_integration',  # TLC/BOTG integration
-    'communication',  # Email, SMS, calls
+    # 'communication',  # Email, SMS, calls - Disabled due to JSONField issues
     'analytics',  # Business intelligence
     'workflow',   # Mission and opportunity management
 ]
@@ -76,6 +78,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'dronestrike_v2.wsgi.application'
+ASGI_APPLICATION = 'dronestrike_v2.asgi.application'
+
+# Channel layers for WebSocket support
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer'
+    }
+}
 
 # Multi-Database configuration for DroneStrike + TLC + BOTG integration
 DATABASE_ENGINE = config('DATABASE_ENGINE', default='sqlite3')
@@ -178,6 +188,9 @@ STATICFILES_DIRS = [
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Mapbox Integration (translated from Laravel config)
+MAPBOX_ACCESS_TOKEN = config('MAPBOX_ACCESS_TOKEN', default='pk.your_mapbox_token_here')
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -400,12 +413,67 @@ LOGGING = {
 
 # Security settings for production
 if not DEBUG:
+    # SSL/HTTPS Security (disabled for IP-based deployment)
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # Security Headers
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_SECONDS = 31536000
-    SECURE_REDIRECT_EXEMPT = []
-    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Cookie Security (adjusted for HTTP deployment)
+    SESSION_COOKIE_SECURE = False  # Set to True when using HTTPS
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SECURE = False  # Set to True when using HTTPS
+    CSRF_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    
+    # Frame Protection
     X_FRAME_OPTIONS = 'DENY'
+    
+    # Referrer Policy
+    SECURE_REFERRER_POLICY = 'same-origin'
+    
+    # Content Security Policy
+    SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups'
+    
+    # Additional Security Settings
+    ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv())  # Must be set in production
+    
+    # Database Security
+    DATABASES['default']['OPTIONS'] = {
+        'sslmode': 'require',
+    } if DATABASE_ENGINE == 'postgresql' else {}
+
+# Additional Security Settings for all environments
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        }
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+
+# Rate Limiting for API
+REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = [
+    'rest_framework.throttling.AnonRateThrottle',
+    'rest_framework.throttling.UserRateThrottle'
+]
+REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
+    'anon': config('API_RATE_LIMIT_ANON', default='100/hour'),
+    'user': config('API_RATE_LIMIT_USER', default='1000/hour')
+}

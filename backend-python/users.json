@@ -38,5 +38,25 @@
     "company": "Panacea",
     "phone": "2106630909",
     "created_at": "2025-06-19T19:57:32.759730"
+  },
+  "test": {
+    "username": "test",
+    "email": "test@gmail.com",
+    "password": "$2b$12$MrndrwZN.WLRVmONrSw0Fele9Lty.QyDsFGAMj5IQOGRfW87x/WLO",
+    "firstName": "",
+    "lastName": "",
+    "company": "",
+    "phone": "",
+    "created_at": "2025-06-23T21:17:23.514716"
+  },
+  "test123": {
+    "username": "test123",
+    "email": "test123@gmail.com",
+    "password": "$2b$12$rSkn800DFo/H1rRSYt4.Du5eZCXjpQXFzGV/bCxwclK8SwX2KdowG",
+    "firstName": "",
+    "lastName": "",
+    "company": "",
+    "phone": "",
+    "created_at": "2025-06-25T15:58:42.315808"
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   MapIcon,
   ClockIcon,
@@ -169,25 +169,25 @@ const Missions: React.FC = () => {
   };
 
   return (
-    <div className="h-full space-y-6">
-      {/* Page Header */}
+    <div className="h-full space-y-4 md:space-y-6">
+      {/* Page Header - Mobile Optimized */}
       <div className="page-header">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
           <div>
-            <h1 className="page-title flex items-center">
-              Mission Command
-              <span className="ml-4 status-badge bg-olive-green text-white border-olive-green">
+            <h1 className="page-title flex flex-col md:flex-row md:items-center">
+              <span>Mission Command</span>
+              <span className="mt-2 md:mt-0 md:ml-4 status-badge bg-olive-green text-white border-olive-green text-sm">
                 OPERATIONAL
               </span>
             </h1>
             <p className="page-subtitle">Coordinate field operations and tactical deployments</p>
           </div>
-          <div className="flex items-center space-x-3">
-            <button className="btn-secondary">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center space-y-2 md:space-y-0 md:space-x-3">
+            <button className="btn-secondary flex items-center justify-center py-3 md:py-2">
               <ArrowPathIcon className="w-5 h-5 mr-2" />
               Refresh
             </button>
-            <button className="btn-danger">
+            <button className="btn-danger flex items-center justify-center py-3 md:py-2">
               <BoltIcon className="w-5 h-5 mr-2" />
               Deploy Mission
             </button>
@@ -195,70 +195,75 @@ const Missions: React.FC = () => {
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="flex items-center space-x-4">
-        <div className="flex-1 relative">
+      {/* Search and Filters - Mobile Responsive */}
+      <div className="space-y-3 md:space-y-0">
+        {/* Search Bar */}
+        <div className="relative">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
           <input
             type="text"
             placeholder="Search missions, agents, targets..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-military w-full pl-10 pr-4 py-3"
+            className="input-military w-full pl-10 pr-4 py-3 text-base"
           />
         </div>
         
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="input-military px-3 py-3"
-        >
-          <option value="all">All Status</option>
-          <option value="assigned">Assigned</option>
-          <option value="in_progress">In Progress</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="on_hold">On Hold</option>
-        </select>
+        {/* Filters Row */}
+        <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="input-military px-3 py-3 text-base flex-1 md:flex-none md:w-auto"
+          >
+            <option value="all">All Status</option>
+            <option value="assigned">Assigned</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="on_hold">On Hold</option>
+          </select>
 
-        <select
-          value={priorityFilter}
-          onChange={(e) => setPriorityFilter(e.target.value)}
-          className="input-military px-3 py-3"
-        >
-          <option value="all">All Priority</option>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="urgent">Urgent</option>
-        </select>
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="input-military px-3 py-3 text-base flex-1 md:flex-none md:w-auto"
+          >
+            <option value="all">All Priority</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
 
-        <button className="btn-secondary p-3">
-          <ViewColumnsIcon className="w-5 h-5" />
-        </button>
+          <button className="btn-secondary p-3 flex items-center justify-center md:w-auto">
+            <ViewColumnsIcon className="w-5 h-5" />
+            <span className="ml-2 md:hidden">View Options</span>
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-6 gap-4 md:gap-6">
         {/* Main Missions Table */}
-        <div className="lg:col-span-5">
+        <div className="xl:col-span-5">
           <div className="enhanced-card">
             {/* Table Header */}
-            <div className="px-6 py-5 border-b border-navy-blue-light">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-semibold text-white">
+            <div className="px-4 md:px-6 py-4 md:py-5 border-b border-navy-blue-light">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
+                <h3 className="text-lg md:text-xl font-semibold text-white">
                   Active Missions 
                   <span className="text-gray-400 font-normal ml-2">({filteredMissions.length})</span>
                 </h3>
                 <div className="flex items-center space-x-2">
-                  <button className="btn-secondary px-4 py-2 text-sm">
+                  <button className="btn-secondary px-4 py-2 text-sm w-full md:w-auto">
                     Export
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Missions Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+            {/* Missions Grid - Mobile Responsive */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4 p-4 md:p-6">
               {filteredMissions.map(mission => {
                 const StatusIcon = getStatusIcon(mission.status);
                 const statusColorClass = getStatusColor(mission.status);
@@ -268,34 +273,34 @@ const Missions: React.FC = () => {
                 return (
                   <div 
                     key={mission.id}
-                    className="enhanced-card p-4 hover:bg-navy-blue-light/30 transition-all duration-200"
+                    className="enhanced-card p-4 hover:bg-navy-blue-light/30 transition-all duration-200 touch-manipulation"
                   >
                     {/* Header */}
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-2">
-                        <StatusIcon className="h-4 w-4 text-brand-color" />
-                        <div className="text-sm font-semibold text-white font-mono">
+                        <StatusIcon className="h-4 w-4 text-brand-color flex-shrink-0" />
+                        <div className="text-sm font-semibold text-white font-mono truncate">
                           {mission.mission_number}
                         </div>
                       </div>
                       <div className="flex space-x-1">
                         <button 
-                          className={`p-1 rounded hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors ${isActionSelected(mission.id, 'view') ? 'text-blue-400' : ''}`}
+                          className={`p-2 md:p-1 rounded hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors touch-manipulation ${isActionSelected(mission.id, 'view') ? 'text-blue-400' : ''}`}
                           onClick={() => handleActionClick(mission.id, 'view')}
                         >
-                          <EyeIcon className="h-4 w-4" />
+                          <EyeIcon className="h-5 w-5 md:h-4 md:w-4" />
                         </button>
                         <button 
-                          className={`p-1 rounded hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors ${isActionSelected(mission.id, 'chat') ? 'text-green-400' : ''}`}
+                          className={`p-2 md:p-1 rounded hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors touch-manipulation ${isActionSelected(mission.id, 'chat') ? 'text-green-400' : ''}`}
                           onClick={() => handleActionClick(mission.id, 'chat')}
                         >
-                          <ChatBubbleLeftIcon className="h-4 w-4" />
+                          <ChatBubbleLeftIcon className="h-5 w-5 md:h-4 md:w-4" />
                         </button>
                         <button 
-                          className={`p-1 rounded hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors ${isActionSelected(mission.id, 'map') ? 'text-purple-400' : ''}`}
+                          className={`p-2 md:p-1 rounded hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors touch-manipulation ${isActionSelected(mission.id, 'map') ? 'text-purple-400' : ''}`}
                           onClick={() => handleActionClick(mission.id, 'map')}
                         >
-                          <MapIcon className="h-4 w-4" />
+                          <MapIcon className="h-5 w-5 md:h-4 md:w-4" />
                         </button>
                       </div>
                     </div>
@@ -342,8 +347,20 @@ const Missions: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Mobile Action Buttons */}
+                    <div className="grid grid-cols-2 gap-2 mt-3 md:hidden">
+                      <button className="btn-primary text-xs py-2 flex items-center justify-center space-x-1">
+                        <PhoneIcon className="h-4 w-4" />
+                        <span>Call Agent</span>
+                      </button>
+                      <button className="btn-secondary text-xs py-2 flex items-center justify-center space-x-1">
+                        <MapIcon className="h-4 w-4" />
+                        <span>Navigate</span>
+                      </button>
+                    </div>
+
                     {/* Footer */}
-                    <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-2">
+                    <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-2 mt-3">
                       Created {formatDate(mission.created_at)}
                     </div>
                   </div>
@@ -367,12 +384,12 @@ const Missions: React.FC = () => {
 
         {/* Sidebar - Mission Controls */}
         <div className="space-y-4">
-          {/* Mission Overview and Quick Actions - Side by Side */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {/* Mission Overview and Quick Actions - Mobile Responsive */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4">
             {/* Mission Stats */}
-            <div className="enhanced-card p-6">
+            <div className="enhanced-card p-4 md:p-6">
               <h3 className="text-sm font-medium text-gray-400 uppercase mb-4 tracking-wider">Mission Overview</h3>
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 {[
                   { label: 'Active Missions', value: missions.filter(m => m.status === 'in_progress').length, color: 'text-alert-yellow' },
                   { label: 'Assigned', value: missions.filter(m => m.status === 'assigned').length, color: 'text-brand-color' },
@@ -388,7 +405,7 @@ const Missions: React.FC = () => {
             </div>
 
             {/* Quick Actions */}
-            <div className="enhanced-card p-6">
+            <div className="enhanced-card p-4 md:p-6">
               <h3 className="text-sm font-medium text-gray-400 uppercase mb-4 tracking-wider">Quick Actions</h3>
               <div className="space-y-3">
                 {[
@@ -399,7 +416,7 @@ const Missions: React.FC = () => {
                 ].map((action, index) => (
                   <button
                     key={index}
-                    className={`${action.class} w-full flex items-center justify-center space-x-2 py-2 text-sm`}
+                    className={`${action.class} w-full flex items-center justify-center space-x-2 py-3 md:py-2 text-sm touch-manipulation`}
                   >
                     <action.icon className="h-4 w-4" />
                     <span>{action.label}</span>
@@ -410,28 +427,63 @@ const Missions: React.FC = () => {
           </div>
 
           {/* Agent Status */}
-          <div className="enhanced-card p-6">
+          <div className="enhanced-card p-4 md:p-6">
             <h3 className="text-sm font-medium text-gray-400 uppercase mb-4 tracking-wider">Agent Status</h3>
             <div className="space-y-3">
               {[
-                { name: 'Agent Rodriguez', status: 'ACTIVE', color: 'bg-olive-green' },
-                { name: 'Agent Chen', status: 'STANDBY', color: 'bg-alert-yellow' },
-                { name: 'Agent Thompson', status: 'OFFLINE', color: 'bg-gray-500' }
+                { name: 'Agent Rodriguez', status: 'ACTIVE', color: 'bg-olive-green', phone: '+1-555-0123' },
+                { name: 'Agent Chen', status: 'STANDBY', color: 'bg-alert-yellow', phone: '+1-555-0124' },
+                { name: 'Agent Thompson', status: 'OFFLINE', color: 'bg-gray-500', phone: '+1-555-0125' }
               ].map((agent, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-2 h-2 ${agent.color} rounded-full`}></div>
-                    <span className="text-white text-sm font-medium">{agent.name}</span>
+                <div key={index} className="bg-slate-700/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-2 h-2 ${agent.color} rounded-full`}></div>
+                      <span className="text-white text-sm font-medium">{agent.name}</span>
+                    </div>
+                    <span className={`status-badge ${agent.color} text-white text-xs`}>
+                      {agent.status}
+                    </span>
                   </div>
-                  <span className={`status-badge ${agent.color} text-white text-xs`}>
-                    {agent.status}
-                  </span>
+                  
+                  {/* Mobile Action Buttons for Agents */}
+                  <div className="grid grid-cols-2 gap-2 mt-2 md:hidden">
+                    <button className="btn-secondary text-xs py-1 flex items-center justify-center space-x-1">
+                      <PhoneIcon className="h-3 w-3" />
+                      <span>Call</span>
+                    </button>
+                    <button className="btn-secondary text-xs py-1 flex items-center justify-center space-x-1">
+                      <ChatBubbleLeftIcon className="h-3 w-3" />
+                      <span>Message</span>
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
       </div>
+      
+      {/* Mobile Bottom Navigation for Quick Actions */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 p-4 md:hidden z-50">
+        <div className="grid grid-cols-3 gap-3">
+          <button className="btn-primary py-3 text-sm flex items-center justify-center space-x-2">
+            <PlusIcon className="h-4 w-4" />
+            <span>New Mission</span>
+          </button>
+          <button className="btn-secondary py-3 text-sm flex items-center justify-center space-x-2">
+            <MapIcon className="h-4 w-4" />
+            <span>Map View</span>
+          </button>
+          <button className="btn-danger py-3 text-sm flex items-center justify-center space-x-2">
+            <PhoneIcon className="h-4 w-4" />
+            <span>Emergency</span>
+          </button>
+        </div>
+      </div>
+      
+      {/* Add bottom padding to prevent content being hidden behind mobile nav */}
+      <div className="h-20 md:hidden"></div>
     </div>
   );
 };

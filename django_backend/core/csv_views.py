@@ -23,7 +23,7 @@ class CSVDashboardView(generics.GenericAPIView):
         """Get dashboard metrics from CSV data"""
         try:
             if csv_service:
-                data = csv_service.get_dashboard_data()
+                data = csv_service.get_dashboard_metrics()
                 return Response(data)
             else:
                 # Fallback data if csv_service is not available
