@@ -17,6 +17,8 @@ jobs:
         host: 134.199.192.164
         username: droneuser
         password: ${{ secrets.DO_SERVER_PASSWORD }}
+        timeout: 300s
+        command_timeout: 600s
         script: |
           cd /home/droneuser/dronestrike-v2
           git fetch origin main
@@ -35,7 +37,7 @@ jobs:
           
           # Frontend deployment  
           cd ../frontend
-          npm install
+          npm install --no-audit --production=false
           npm run build
           sudo cp -r build/* /var/www/dronestrike-v2/
           sudo systemctl restart nginx
