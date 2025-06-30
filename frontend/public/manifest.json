@@ -1,11 +1,6 @@
 {
-<<<<<<< HEAD
   "short_name": "DroneStrike v2",
   "name": "DroneStrike v2 - Property Intelligence Platform",
-=======
-  "short_name": "React App",
-  "name": "Create React App Sample",
->>>>>>> 6a1609b6598bf6f4a7f810e13917b78151e3340e
   "icons": [
     {
       "src": "favicon.ico",
@@ -27,8 +22,4 @@
   "display": "standalone",
   "theme_color": "#000000",
   "background_color": "#ffffff"
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 6a1609b6598bf6f4a7f810e13917b78151e3340e
