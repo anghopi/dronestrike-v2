@@ -20,26 +20,36 @@ jobs:
         timeout: 300s
         command_timeout: 600s
         script: |
+          set -e
+          echo "Starting deployment..."
+          
           cd /home/droneuser/dronestrike-v2
+          echo "Fetching latest code..."
           git fetch origin main
           git stash push -m "Auto-stash before deployment" || true
           git clean -fd || true
           git pull origin main
+          echo "Code updated successfully"
           
           # Backend deployment
+          echo "Deploying backend..."
           cd django_backend
           source venv/bin/activate
-          pip install -r requirements.txt
-          python manage.py migrate
+          pip install -r requirements.txt --quiet
+          python manage.py migrate --noinput
           python manage.py collectstatic --noinput
           pkill -f "manage.py runserver" || true
           nohup python manage.py runserver 0.0.0.0:8000 > django.log 2>&1 &
+          echo "Backend deployed successfully"
           
           # Frontend deployment  
+          echo "Deploying frontend..."
           cd ../frontend
-          npm install --no-audit --production=false
-          npm run build
-          sudo cp -r build/* /var/www/dronestrike-v2/
-          sudo systemctl restart nginx
+          export NODE_OPTIONS="--max-old-space-size=2048"
+          npm ci --silent
+          npm run build --silent
+          echo "dronestrike-v2-prod.XGT13ds" | sudo -S cp -r build/* /var/www/dronestrike-v2/
+          echo "dronestrike-v2-prod.XGT13ds" | sudo -S systemctl restart nginx
+          echo "Frontend deployed successfully"
           
           echo "Deployment completed successfully"
