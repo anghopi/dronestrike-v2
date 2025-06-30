@@ -11,29 +11,30 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Deploy to Digital Ocean
+    - name: Update Code
       uses: appleboy/ssh-action@v0.1.8
       with:
         host: 134.199.192.164
         username: droneuser
         password: ${{ secrets.DO_SERVER_PASSWORD }}
-        timeout: 300s
-        command_timeout: 600s
+        timeout: 60s
         script: |
-          set -e
-          echo "Starting deployment..."
-          
           cd /home/droneuser/dronestrike-v2
-          echo "Fetching latest code..."
           git fetch origin main
           git stash push -m "Auto-stash before deployment" || true
           git clean -fd || true
           git pull origin main
           echo "Code updated successfully"
-          
-          # Backend deployment
-          echo "Deploying backend..."
-          cd django_backend
+    
+    - name: Deploy Backend
+      uses: appleboy/ssh-action@v0.1.8
+      with:
+        host: 134.199.192.164
+        username: droneuser
+        password: ${{ secrets.DO_SERVER_PASSWORD }}
+        timeout: 120s
+        script: |
+          cd /home/droneuser/dronestrike-v2/django_backend
           source venv/bin/activate
           pip install -r requirements.txt --quiet
           python manage.py migrate --noinput
@@ -41,15 +42,18 @@ jobs:
           pkill -f "manage.py runserver" || true
           nohup python manage.py runserver 0.0.0.0:8000 > django.log 2>&1 &
           echo "Backend deployed successfully"
-          
-          # Frontend deployment  
-          echo "Deploying frontend..."
-          cd ../frontend
-          export NODE_OPTIONS="--max-old-space-size=2048"
+    
+    - name: Deploy Frontend
+      uses: appleboy/ssh-action@v0.1.8
+      with:
+        host: 134.199.192.164
+        username: droneuser
+        password: ${{ secrets.DO_SERVER_PASSWORD }}
+        timeout: 180s
+        script: |
+          cd /home/droneuser/dronestrike-v2/frontend
           npm ci --silent
           npm run build --silent
           echo "dronestrike-v2-prod.XGT13ds" | sudo -S cp -r build/* /var/www/dronestrike-v2/
           echo "dronestrike-v2-prod.XGT13ds" | sudo -S systemctl restart nginx
           echo "Frontend deployed successfully"
-          
-          echo "Deployment completed successfully"
