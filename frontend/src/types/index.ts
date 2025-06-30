@@ -247,6 +247,108 @@ export interface TokenTransaction {
   created_at: string;
 }
 
+// Campaign System Types
+export interface Campaign {
+  id: number;
+  name: string;
+  communication_type: 'email' | 'sms' | 'postcard' | 'letter' | 'phone';
+  status: 'draft' | 'scheduled' | 'active' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  description?: string;
+  template_id?: number;
+  targeting_criteria?: Record<string, any>;
+  schedule?: Record<string, any>;
+  total_sent: number;
+  total_failed: number;
+  total_responses: number;
+  response_rate: number;
+  tokens_consumed: number;
+  total_cost: number;
+  created_at: string;
+  updated_at: string;
+  user: User;
+}
+
+export interface CampaignAnalytics {
+  overview: {
+    summary: {
+      total_campaigns: number;
+      active_campaigns: number;
+      completed_campaigns: number;
+      draft_campaigns: number;
+      scheduled_campaigns: number;
+    };
+    performance: {
+      total_sent: number;
+      total_responses: number;
+      average_response_rate: number;
+      total_cost: number;
+      average_cost_per_lead: number;
+    };
+  };
+  aggregate_metrics: {
+    total_sent: number;
+    total_responses: number;
+    total_cost: number;
+    average_response_rate: number;
+    cost_per_response: number;
+    tokens_consumed: number;
+  };
+  communication_breakdown: {
+    email: {
+      campaigns: number;
+      sent: number;
+      responses: number;
+      cost: number;
+    };
+    sms: {
+      campaigns: number;
+      sent: number;
+      responses: number;
+      cost: number;
+    };
+    postcard: {
+      campaigns: number;
+      sent: number;
+      responses: number;
+      cost: number;
+    };
+  };
+  recent_activity: Array<{
+    campaign_id: number;
+    campaign_name: string;
+    action: string;
+    timestamp: string;
+  }>;
+}
+
+export interface CampaignsResponse {
+  campaigns: Campaign[];
+  total_count: number;
+  page: number;
+  per_page: number;
+  has_next: boolean;
+  has_prev: boolean;
+}
+
+export interface CommunicationTemplate {
+  id: number;
+  name: string;
+  communication_type: 'email' | 'sms' | 'postcard' | 'letter';
+  subject?: string;
+  content: string;
+  variables: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Token API Response Types
+export interface TokenBalance {
+  regular_tokens: number;
+  mail_tokens: number;
+  last_updated: string;
+}
+
 // API Response Types
 export interface APIResponse<T> {
   data: T;

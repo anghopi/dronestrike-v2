@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DroneStrike WebSocket Test</title>
+</head>
+<body>
+    <h1>DroneStrike WebSocket Test</h1>
+    <div id="status">Disconnected</div>
+    <div id="messages"></div>
+    <button onclick="connect()">Connect</button>
+    <button onclick="disconnect()">Disconnect</button>
+    <button onclick="sendPing()">Send Ping</button>
+
+    <script>
+        let socket = null;
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+
+        function updateStatus(status) {
+            statusDiv.textContent = status;
+            addMessage('Status: ' + status);
+        }
+
+        function addMessage(message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.textContent = new Date().toLocaleTimeString() + ': ' + message;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function connect() {
+            if (socket) {
+                socket.close();
+            }
+
+            updateStatus('Connecting...');
+            socket = new WebSocket('ws://127.0.0.1:8000/ws/dronestrike/');
+
+            socket.onopen = function(event) {
+                updateStatus('Connected');
+                addMessage('WebSocket connection established');
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                addMessage('Received: ' + JSON.stringify(data, null, 2));
+            };
+
+            socket.onclose = function(event) {
+                updateStatus('Disconnected');
+                addMessage('WebSocket connection closed. Code: ' + event.code + ', Reason: ' + event.reason);
+            };
+
+            socket.onerror = function(error) {
+                updateStatus('Error');
+                addMessage('WebSocket error: ' + error);
+            };
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.close();
+                socket = null;
+            }
+        }
+
+        function sendPing() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const message = {
+                    type: 'ping',
+                    timestamp: new Date().toISOString()
+                };
+                socket.send(JSON.stringify(message));
+                addMessage('Sent ping: ' + JSON.stringify(message));
+            } else {
+                addMessage('Cannot send ping - not connected');
+            }
+        }
+    </script>
+</body>
+</html>

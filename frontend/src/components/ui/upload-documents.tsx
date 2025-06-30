@@ -202,21 +202,22 @@ export function UploadDocuments({
       <div
         {...getRootProps()}
         className={cn(
-          'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
-          isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25',
-          'hover:border-primary hover:bg-primary/5'
+          'border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors',
+          isDragActive ? 'border-blue-400 bg-blue-500/10' : 'border-slate-600/50',
+          'hover:border-blue-400 hover:bg-blue-500/5'
         )}
       >
         <input {...getInputProps()} />
-        <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-        <div className="space-y-2">
-          <p className="text-lg font-medium">
+        <Upload className={cn(
+          "h-6 w-6 mx-auto mb-2 transition-colors",
+          isDragActive ? "text-blue-400" : "text-slate-400"
+        )} />
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-white">
             {isDragActive ? 'Drop files here' : 'Click or drag files to upload'}
           </p>
-          <p className="text-sm text-muted-foreground">
-            Support for single or bulk upload. Max file size: {formatFileSize(maxFileSize)}
-            <br />
-            Allowed extensions: <strong>{allowedTypes.join(', ')}</strong>
+          <p className="text-xs text-slate-400">
+            Max file size: {formatFileSize(maxFileSize)} • {allowedTypes.join(', ')}
           </p>
         </div>
       </div>
@@ -224,20 +225,22 @@ export function UploadDocuments({
       {files.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Files ({files.length})</h3>
+            <h3 className="text-lg font-medium text-white">Files ({files.length})</h3>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 onClick={() => setFiles([])}
                 disabled={uploading}
+                className="border-slate-600 text-slate-300 hover:bg-slate-700"
               >
                 Clear All
               </Button>
               <Button
                 onClick={handleUpload}
                 disabled={uploading || files.every(f => f.status === 'error')}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
-                Upload Files
+                {uploading ? 'Uploading...' : 'Upload Files'}
               </Button>
             </div>
           </div>

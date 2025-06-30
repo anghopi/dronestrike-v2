@@ -84,6 +84,7 @@ const MapboxTargetsView: React.FC = () => {
   const [showFilters, setShowFilters] = useState(true);
   const [selectedTarget, setSelectedTarget] = useState<TargetData | null>(null);
   const [popupInfo, setPopupInfo] = useState<{target: TargetData; lat: number; lng: number} | null>(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   
   // Map state
   const [viewState, setViewState] = useState({
@@ -290,57 +291,57 @@ const MapboxTargetsView: React.FC = () => {
     id: 'heatmap',
     type: 'heatmap',
     source: 'heatmap',
-    maxzoom: 9,
+    maxzoom: 12,
     paint: {
       'heatmap-weight': [
         'interpolate',
         ['linear'],
         ['get', 'weight'],
         0, 0,
-        6, 1
+        8, 1
       ],
       'heatmap-intensity': [
         'interpolate',
         ['linear'],
         ['zoom'],
         0, 1,
-        9, 3
+        12, 4
       ],
       'heatmap-color': [
         'interpolate',
         ['linear'],
         ['heatmap-density'],
         0, 'rgba(33,102,172,0)',
-        0.2, 'rgb(103,169,207)',
-        0.4, 'rgb(209,229,240)',
-        0.6, 'rgb(253,219,199)',
-        0.8, 'rgb(239,138,98)',
-        1, 'rgb(178,24,43)'
+        0.1, 'rgba(103,169,207,0.4)',
+        0.3, 'rgba(209,229,240,0.6)',
+        0.5, 'rgba(253,219,199,0.8)',
+        0.7, 'rgba(239,138,98,0.9)',
+        1, 'rgba(178,24,43,1)'
       ],
       'heatmap-radius': [
         'interpolate',
         ['linear'],
         ['zoom'],
-        0, 2,
-        9, 20
+        0, 5,
+        12, 30
       ],
       'heatmap-opacity': [
         'interpolate',
         ['linear'],
         ['zoom'],
-        7, 1,
-        9, 0
+        5, 0.8,
+        12, 0.6
       ]
     }
   };
 
   return (
-    <div className="h-screen bg-slate-900 text-gray-100 flex">
+    <div className="h-screen bg-slate-900 text-gray-100 flex overflow-hidden">
       {/* Sidebar */}
       <div className={`bg-slate-800 border-r border-slate-700 transition-all duration-300 ${
         showFilters ? 'w-80' : 'w-0'
-      } overflow-hidden`}>
-        <div className="p-4 h-full overflow-y-auto">
+      } ${showFilters ? 'overflow-y-auto' : 'overflow-hidden'} flex flex-col`}>
+        <div className="p-4 flex-1 overflow-y-auto">
           <h2 className="text-lg font-bold mb-4">Map Search & Filters</h2>
           
           {/* Search Section */}
@@ -409,15 +410,47 @@ const MapboxTargetsView: React.FC = () => {
               {propertyTypeFilters.map(filter => {
                 const Icon = filter.icon;
                 const isActive = filters.property_type_filter === filter.value;
+                
+                // Define button styles with inline CSS to override any conflicts
+                const getButtonStyle = () => {
+                  if (!isActive) {
+                    return {
+                      backgroundColor: '#334155',
+                      color: '#d1d5db',
+                      borderColor: '#334155'
+                    };
+                  }
+                  
+                  switch(filter.color) {
+                    case 'blue': return {
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      borderColor: '#2563eb'
+                    };
+                    case 'purple': return {
+                      backgroundColor: '#9333ea',
+                      color: '#ffffff',
+                      borderColor: '#9333ea'
+                    };
+                    case 'yellow': return {
+                      backgroundColor: '#ca8a04',
+                      color: '#ffffff',
+                      borderColor: '#ca8a04'
+                    };
+                    default: return {
+                      backgroundColor: '#4b5563',
+                      color: '#ffffff',
+                      borderColor: '#4b5563'
+                    };
+                  }
+                };
+                
                 return (
                   <button
                     key={filter.value}
                     onClick={() => handleFilterChange('property_type_filter', filter.value)}
-                    className={`flex items-center space-x-2 px-3 py-2 rounded transition-colors text-sm ${
-                      isActive 
-                        ? `bg-${filter.color}-600 text-white` 
-                        : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
-                    }`}
+                    className="flex items-center space-x-2 px-3 py-2 rounded transition-all text-sm border"
+                    style={getButtonStyle()}
                   >
                     <Icon size={16} />
                     <span>{filter.label}</span>
@@ -508,15 +541,38 @@ const MapboxTargetsView: React.FC = () => {
       </div>
 
       {/* Map Container */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative overflow-hidden">
         {/* Map Controls */}
-        <div className="absolute top-4 left-4 z-10 flex space-x-2">
+        <div className="absolute top-4 left-4 z-10 flex space-x-3">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center space-x-2 px-4 py-2 bg-slate-800 text-white rounded shadow-lg hover:bg-slate-700 transition-colors"
+            className={`flex items-center space-x-2 px-5 py-3 rounded-lg shadow-lg transition-all duration-200 border ${
+              showFilters 
+                ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white hover:from-orange-700 hover:to-orange-800 border-orange-600' 
+                : 'bg-gradient-to-r from-slate-700 to-slate-800 text-white hover:from-orange-600 hover:to-orange-700 border-slate-600'
+            }`}
           >
             <Filter size={20} />
-            <span>{showFilters ? 'Hide' : 'Show'} Filters</span>
+            <span className="font-medium">{showFilters ? 'Hide' : 'Show'} Filters</span>
+          </button>
+          <button
+            onClick={() => setShowHeatmap(!showHeatmap)}
+            className={`flex items-center space-x-2 px-5 py-3 rounded-lg shadow-lg transition-all duration-200 border ${
+              mapPins.length === 0 
+                ? 'bg-slate-600 text-slate-400 border-slate-500 cursor-not-allowed opacity-50'
+                : showHeatmap 
+                  ? 'bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 border-red-600' 
+                  : 'bg-gradient-to-r from-slate-700 to-slate-800 text-white hover:from-red-600 hover:to-red-700 border-slate-600'
+            }`}
+            disabled={mapPins.length === 0}
+          >
+            <Target size={20} />
+            <span className="font-medium">
+              {showHeatmap ? 'Hide' : 'Show'} Heatmap
+              {mapPins.length > 0 && (
+                <span className="ml-1 text-xs opacity-75">({mapPins.length})</span>
+              )}
+            </span>
           </button>
         </div>
 
@@ -530,12 +586,12 @@ const MapboxTargetsView: React.FC = () => {
             mapStyle="mapbox://styles/mapbox/dark-v11"
             mapboxAccessToken={MAPBOX_TOKEN}
           >
-          {/* Heatmap Layer */}
-          {mapPins.length > 50 && (
-            <Source id="heatmap" type="geojson" data={heatmapData}>
-              <Layer {...heatmapLayer} />
-            </Source>
-          )}
+            {/* Heatmap Layer */}
+            {showHeatmap && mapPins.length > 0 && (
+              <Source id="heatmap" type="geojson" data={heatmapData}>
+                <Layer {...heatmapLayer} />
+              </Source>
+            )}
 
           {/* Individual Markers (shown when zoomed in) */}
           {viewState.zoom > 9 && mapPins.map((pin) => (

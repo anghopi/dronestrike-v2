@@ -810,3 +810,564 @@ class CSVUploadView(generics.CreateAPIView):
                 continue
         
         return created_count, errors
+
+
+# Document Management System Views
+# Enterprise-level document management with version control, workflows, and templates
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.http import HttpResponse, Http404, FileResponse
+from django.core.files.storage import default_storage
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.db import transaction
+import hashlib
+import mimetypes
+import os
+import zipfile
+import tempfile
+
+from .models import (
+    Document, DocumentFolder, DocumentTemplate, DocumentPermission,
+    DocumentStatusHistory, DocumentActivity, DocumentAttachment,
+    DocumentComment, DocumentFolderPermission
+)
+from .document_serializers import (
+    DocumentSerializer, DocumentListSerializer, DocumentCreateSerializer,
+    DocumentFolderSerializer, DocumentTemplateSerializer,
+    DocumentStatsSerializer, DocumentUploadSerializer
+)
+
+
+class DocumentViewSet(viewsets.ModelViewSet):
+    """Complete document management ViewSet"""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    queryset = Document.objects.all()  # Will be filtered in get_queryset
+    serializer_class = DocumentSerializer
+
+    def get_serializer_class(self):
+        """Use different serializers for different actions"""
+        if self.action == 'list':
+            return DocumentListSerializer
+        elif self.action == 'create':
+            return DocumentCreateSerializer
+        return DocumentSerializer
+    
+    def get_queryset(self):
+        """Filter documents based on user permissions"""
+        user = self.request.user
+        queryset = Document.objects.filter(
+            Q(created_by=user) |
+            Q(shared_with=user) |
+            Q(folder__shared_with=user)
+        ).distinct()
+        
+        # Apply filters
+        document_type = self.request.query_params.get('document_type')
+        status = self.request.query_params.get('status')
+        folder_id = self.request.query_params.get('folder_id')
+        is_template = self.request.query_params.get('is_template')
+        is_shared = self.request.query_params.get('is_shared')
+        search = self.request.query_params.get('search')
+        
+        if document_type:
+            queryset = queryset.filter(document_type=document_type)
+        if status:
+            queryset = queryset.filter(status=status)
+        if folder_id:
+            queryset = queryset.filter(folder_id=folder_id)
+        if is_template is not None:
+            queryset = queryset.filter(is_template=is_template.lower() == 'true')
+        if is_shared is not None:
+            queryset = queryset.filter(is_shared=is_shared.lower() == 'true')
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(filename__icontains=search) |
+                Q(tags__contains=[search])
+            )
+        
+        return queryset.order_by('-updated_at')
+    
+    def perform_create(self, serializer):
+        """Set document creator and track activity"""
+        document = serializer.save(
+            created_by=self.request.user,
+            last_modified_by=self.request.user
+        )
+        
+        # Create activity log
+        DocumentActivity.objects.create(
+            document=document,
+            activity_type='created',
+            description=f'Document "{document.name}" was created',
+            user=self.request.user
+        )
+
+
+class DocumentFolderViewSet(viewsets.ModelViewSet):
+    """Document folder management ViewSet"""
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = DocumentFolder.objects.all()  # Will be filtered in get_queryset
+    serializer_class = DocumentFolderSerializer
+    
+    def get_queryset(self):
+        """Filter folders based on user permissions"""
+        user = self.request.user
+        return DocumentFolder.objects.filter(
+            Q(created_by=user) |
+            Q(shared_with=user)
+        ).distinct().order_by('name')
+    
+    def perform_create(self, serializer):
+        """Set folder creator"""
+        serializer.save(created_by=self.request.user)
+
+
+class DocumentTemplateViewSet(viewsets.ModelViewSet):
+    """Document template management ViewSet"""
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = DocumentTemplate.objects.all()  # Will be filtered in get_queryset
+    serializer_class = DocumentTemplateSerializer
+    
+    def get_queryset(self):
+        """Get active templates"""
+        return DocumentTemplate.objects.filter(is_active=True).order_by('name')
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_upload_api(request):
+    """Upload single document"""
+    serializer = DocumentUploadSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    file = serializer.validated_data['file']
+    
+    # Calculate file checksum
+    hasher = hashlib.sha256()
+    for chunk in file.chunks():
+        hasher.update(chunk)
+    checksum = hasher.hexdigest()
+    
+    # Save file
+    file_path = default_storage.save(
+        f'documents/{timezone.now().year}/{timezone.now().month}/{file.name}',
+        file
+    )
+    
+    # Get folder if provided
+    folder = None
+    if serializer.validated_data.get('folder_id'):
+        try:
+            folder = DocumentFolder.objects.get(
+                Q(id=serializer.validated_data['folder_id']) &
+                (Q(created_by=request.user) | Q(shared_with=request.user))
+            )
+        except DocumentFolder.DoesNotExist:
+            pass
+    
+    # Create document record
+    document = Document.objects.create(
+        name=serializer.validated_data.get('name') or file.name,
+        filename=file.name,
+        file_path=file_path,
+        file_size=file.size,
+        file_type=file.name.split('.')[-1].lower() if '.' in file.name else '',
+        mime_type=file.content_type or mimetypes.guess_type(file.name)[0] or 'application/octet-stream',
+        checksum=checksum,
+        document_type=serializer.validated_data['document_type'],
+        folder=folder,
+        tags=serializer.validated_data['tags'],
+        is_template=serializer.validated_data['is_template'],
+        metadata=serializer.validated_data['metadata'],
+        created_by=request.user,
+        last_modified_by=request.user
+    )
+    
+    # Create activity log
+    DocumentActivity.objects.create(
+        document=document,
+        activity_type='created',
+        description=f'Document "{document.name}" was uploaded',
+        user=request.user
+    )
+    
+    # Return document using serializer
+    document_serializer = DocumentListSerializer(document)
+    return Response(document_serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def document_download_api(request, document_id):
+    """Download document file"""
+    try:
+        document = Document.objects.get(
+            Q(id=document_id) &
+            (Q(created_by=request.user) |
+             Q(shared_with=request.user) |
+             Q(folder__shared_with=request.user))
+        )
+        
+        # Track download activity
+        DocumentActivity.objects.create(
+            document=document,
+            activity_type='downloaded',
+            description=f'Document "{document.name}" was downloaded',
+            user=request.user
+        )
+        
+        # Update last accessed time
+        document.last_accessed_at = timezone.now()
+        document.save(update_fields=['last_accessed_at'])
+        
+        # Return file response
+        if default_storage.exists(document.file_path):
+            return FileResponse(
+                default_storage.open(document.file_path, 'rb'),
+                as_attachment=True,
+                filename=document.filename
+            )
+        else:
+            return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+    except Document.DoesNotExist:
+        return Response({'error': 'Document not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def document_stats_api(request):
+    """Get document statistics"""
+    user_documents = Document.objects.filter(
+        Q(created_by=request.user) |
+        Q(shared_with=request.user)
+    ).distinct()
+    
+    stats_data = {
+        'total_documents': user_documents.count(),
+        'total_size': user_documents.aggregate(total=Sum('file_size'))['total'] or 0,
+        'documents_by_type': {},
+        'documents_by_status': {},
+        'recent_activity_count': DocumentActivity.objects.filter(
+            document__in=user_documents,
+            created_at__gte=timezone.now() - timedelta(days=7)
+        ).count(),
+        'shared_documents_count': user_documents.filter(is_shared=True).count(),
+        'template_documents_count': user_documents.filter(is_template=True).count()
+    }
+    
+    # Documents by type
+    for doc_type, _ in Document.DOCUMENT_TYPE_CHOICES:
+        count = user_documents.filter(document_type=doc_type).count()
+        if count > 0:
+            stats_data['documents_by_type'][doc_type] = count
+    
+    # Documents by status
+    for doc_status, _ in Document.STATUS_CHOICES:
+        count = user_documents.filter(status=doc_status).count()
+        if count > 0:
+            stats_data['documents_by_status'][doc_status] = count
+    
+    # Use serializer for validation and consistent output
+    serializer = DocumentStatsSerializer(data=stats_data)
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.validated_data)
+
+
+# Placeholder functions for advanced features that will be implemented later
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_bulk_upload_api(request):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_bulk_download_api(request):
+    """Download multiple documents as ZIP"""
+    document_ids = request.data.get('document_ids', [])
+    
+    if not document_ids:
+        return Response({'error': 'No document IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    documents = Document.objects.filter(
+        Q(id__in=document_ids) &
+        (Q(created_by=request.user) |
+         Q(shared_with=request.user) |
+         Q(folder__shared_with=request.user))
+    ).distinct()
+    
+    if not documents.exists():
+        return Response({'error': 'No accessible documents found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Create temporary ZIP file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
+        with zipfile.ZipFile(tmp_file, 'w') as zip_file:
+            for document in documents:
+                if default_storage.exists(document.file_path):
+                    with default_storage.open(document.file_path, 'rb') as doc_file:
+                        zip_file.writestr(document.filename, doc_file.read())
+                    
+                    # Track download activity
+                    DocumentActivity.objects.create(
+                        document=document,
+                        activity_type='downloaded',
+                        description=f'Document "{document.name}" was bulk downloaded',
+                        user=request.user
+                    )
+        
+        # Return ZIP file
+        response = FileResponse(
+            open(tmp_file.name, 'rb'),
+            as_attachment=True,
+            filename=f'documents_{timezone.now().strftime("%Y%m%d_%H%M%S")}.zip'
+        )
+        
+        # Clean up temp file after response
+        def cleanup():
+            try:
+                os.unlink(tmp_file.name)
+            except OSError:
+                pass
+        
+        # Schedule cleanup (will happen after response is sent)
+        import atexit
+        atexit.register(cleanup)
+        
+        return response
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_bulk_delete_api(request):
+    """Delete multiple documents"""
+    document_ids = request.data.get('document_ids', [])
+    
+    if not document_ids:
+        return Response({'error': 'No document IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    documents = Document.objects.filter(
+        Q(id__in=document_ids) &
+        Q(created_by=request.user)  # Only allow deletion by creator
+    )
+    
+    if not documents.exists():
+        return Response({'error': 'No deletable documents found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    deleted_count = 0
+    deleted_names = []
+    
+    for document in documents:
+        # Create activity log before deletion
+        DocumentActivity.objects.create(
+            document=document,
+            activity_type='deleted',
+            description=f'Document "{document.name}" was bulk deleted',
+            user=request.user
+        )
+        
+        # Delete file from storage
+        if default_storage.exists(document.file_path):
+            try:
+                default_storage.delete(document.file_path)
+            except Exception as e:
+                print(f"Error deleting file {document.file_path}: {e}")
+        
+        deleted_names.append(document.name)
+        document.delete()
+        deleted_count += 1
+    
+    return Response({
+        'deleted_count': deleted_count,
+        'deleted_documents': deleted_names,
+        'message': f'Successfully deleted {deleted_count} document(s)'
+    })
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def document_versions_api(request, document_id):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def document_version_download_api(request, document_id, version):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def document_version_compare_api(request, document_id):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_version_revert_api(request, document_id, version):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_duplicate_api(request, document_id):
+    """Duplicate a document"""
+    try:
+        original = Document.objects.get(
+            Q(id=document_id) &
+            (Q(created_by=request.user) |
+             Q(shared_with=request.user) |
+             Q(folder__shared_with=request.user))
+        )
+        
+        # Create duplicate with new name
+        custom_name = request.data.get('name', f"Copy of {original.name}")
+        
+        duplicate = Document.objects.create(
+            name=custom_name,
+            filename=f"copy_{original.filename}",
+            file_path=original.file_path,  # Share same file initially
+            file_size=original.file_size,
+            file_type=original.file_type,
+            mime_type=original.mime_type,
+            checksum=original.checksum,
+            document_type=original.document_type,
+            folder=original.folder,
+            tags=original.tags.copy(),
+            is_template=original.is_template,
+            template_variables=original.template_variables.copy(),
+            metadata=original.metadata.copy(),
+            created_by=request.user,
+            last_modified_by=request.user
+        )
+        
+        # Create activity log for both documents
+        DocumentActivity.objects.create(
+            document=duplicate,
+            activity_type='created',
+            description=f'Document duplicated from "{original.name}"',
+            user=request.user
+        )
+        
+        DocumentActivity.objects.create(
+            document=original,
+            activity_type='updated',
+            description=f'Document was duplicated as "{duplicate.name}"',
+            user=request.user
+        )
+        
+        # Return duplicated document
+        serializer = DocumentListSerializer(duplicate)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+    except Document.DoesNotExist:
+        return Response({'error': 'Document not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_share_api(request, document_id):
+    """Share document with other users"""
+    try:
+        document = Document.objects.get(
+            Q(id=document_id) &
+            (Q(created_by=request.user) |
+             Q(permissions__user=request.user, permissions__can_share=True))
+        )
+        
+        email = request.data.get('email')
+        permission_level = request.data.get('permission_level', 'view')
+        
+        if not email:
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Find user by email
+        try:
+            user_to_share = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if already shared
+        permission, created = DocumentPermission.objects.get_or_create(
+            document=document,
+            user=user_to_share,
+            defaults={
+                'permission_level': permission_level,
+                'can_view': True,
+                'can_edit': permission_level in ['edit', 'admin'],
+                'can_delete': permission_level == 'admin',
+                'can_share': permission_level == 'admin',
+                'can_download': True,
+                'granted_by': request.user
+            }
+        )
+        
+        if not created:
+            # Update existing permission
+            permission.permission_level = permission_level
+            permission.can_view = True
+            permission.can_edit = permission_level in ['edit', 'admin']
+            permission.can_delete = permission_level == 'admin'
+            permission.can_share = permission_level == 'admin'
+            permission.can_download = True
+            permission.granted_by = request.user
+            permission.save()
+        
+        # Mark document as shared
+        document.is_shared = True
+        document.save()
+        
+        # Create activity log
+        DocumentActivity.objects.create(
+            document=document,
+            activity_type='shared',
+            description=f'Document shared with {user_to_share.email} ({permission_level} access)',
+            user=request.user
+        )
+        
+        return Response({
+            'message': f'Document shared with {email}',
+            'permission_level': permission_level,
+            'created': created
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        
+    except Document.DoesNotExist:
+        return Response({'error': 'Document not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def document_activity_api(request, document_id):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_attachments_api(request, document_id):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def document_attachment_download_api(request, document_id, attachment_id):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_comments_api(request, document_id):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_generate_api(request):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def document_merge_api(request):
+    return Response({'message': 'Feature coming soon'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def shared_documents_api(request):
+    """Get documents shared with the user"""
+    shared_docs = Document.objects.filter(
+        shared_with=request.user
+    ).order_by('-updated_at')
+    
+    serializer = DocumentListSerializer(shared_docs, many=True)
+    return Response(serializer.data)

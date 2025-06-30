@@ -52,6 +52,36 @@ class UserProfile(models.Model):
     color_scheme = models.CharField(max_length=7, default='#1a3d6d')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='user')
     
+    # Enhanced Role System (bitwise flags like Laravel original)
+    role_flags = models.IntegerField(default=1)  # Start with SOLDIER role
+    
+    # Geographic restrictions (from Laravel original)
+    allowed_states = models.JSONField(default=list, blank=True)
+    allowed_counties = models.JSONField(default=list, blank=True)
+    max_radius_miles = models.IntegerField(default=50)
+    
+    # Mission restrictions (from Laravel business logic)
+    max_active_missions = models.IntegerField(default=1)
+    max_daily_missions = models.IntegerField(default=10)
+    can_create_routes = models.BooleanField(default=True)
+    max_route_points = models.IntegerField(default=20)
+    
+    # Safety and compliance (critical for BOTG operations)
+    safety_decline_count = models.IntegerField(default=0)
+    is_suspended = models.BooleanField(default=False)
+    suspension_reason = models.TextField(blank=True)
+    suspended_until = models.DateTimeField(null=True, blank=True)
+    last_safety_decline = models.DateTimeField(null=True, blank=True)
+    
+    # Device restrictions
+    max_devices = models.IntegerField(default=3)
+    require_device_registration = models.BooleanField(default=True)
+    
+    # Special privileges
+    can_access_dangerous_properties = models.BooleanField(default=False)
+    can_override_business_hours = models.BooleanField(default=False)
+    can_view_competitor_data = models.BooleanField(default=False)
+    
     # Token system (from Token Values.xlsx)
     tokens = models.IntegerField(default=10000)  # Regular tokens
     mail_tokens = models.IntegerField(default=0)  # Special mail tokens ($0.80 each)
@@ -82,6 +112,95 @@ class UserProfile(models.Model):
     
     def __str__(self):
         return f"{self.user.username}'s Profile"
+    
+    # Role management methods (from Laravel original)
+    def has_role(self, role_flag):
+        """Check if user has specific role using bitwise operations"""
+        return bool(self.role_flags & role_flag)
+    
+    def add_role(self, role_flag):
+        """Add role to user"""
+        self.role_flags |= role_flag
+        self.save()
+    
+    def remove_role(self, role_flag):
+        """Remove role from user"""
+        self.role_flags &= ~role_flag
+        self.save()
+    
+    def get_role_names(self):
+        """Get list of user's role names"""
+        from .user_roles import UserRole
+        return UserRole.get_user_roles(self.role_flags)
+    
+    def get_primary_role_display(self):
+        """Get primary role for display purposes"""
+        from .user_roles import UserRole
+        roles = UserRole.get_user_roles(self.role_flags)
+        return roles[0] if roles else 'No Role'
+    
+    def has_permission(self, permission):
+        """Check if user has specific permission based on roles"""
+        from .user_roles import UserPermission, UserRole
+        
+        for role_flag, permissions in UserPermission.ROLE_PERMISSIONS.items():
+            if self.has_role(role_flag) and permission in permissions:
+                return True
+        return False
+    
+    def get_permissions(self):
+        """Get all permissions for user based on roles"""
+        from .user_roles import UserPermission
+        permissions = set()
+        for role_flag, role_permissions in UserPermission.ROLE_PERMISSIONS.items():
+            if self.has_role(role_flag):
+                permissions.update(role_permissions)
+        return list(permissions)
+    
+    def can_accept_missions(self):
+        """Check if user can accept new missions (critical business logic)"""
+        if self.is_suspended:
+            return False, "User is suspended"
+        
+        # Check active mission limit
+        active_count = Mission.objects.filter(
+            user=self.user,
+            status__in=[Mission.STATUS_NEW, Mission.STATUS_ACCEPTED, Mission.STATUS_ON_HOLD]
+        ).count()
+        
+        if active_count >= self.max_active_missions:
+            return False, f"Maximum active missions reached ({self.max_active_missions})"
+        
+        return True, "Can accept missions"
+    
+    def record_safety_decline(self, reason=""):
+        """Record safety decline and auto-suspend if needed"""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        self.safety_decline_count += 1
+        self.last_safety_decline = timezone.now()
+        
+        # Auto-suspend after 3 safety declines
+        if self.safety_decline_count >= 3:
+            self.is_suspended = True
+            self.suspension_reason = f"Auto-suspended: {self.safety_decline_count} safety declines. {reason}"
+            self.suspended_until = timezone.now() + timedelta(days=7)
+        
+        self.save()
+    
+    def check_suspension_expiry(self):
+        """Check and remove expired suspensions"""
+        from django.utils import timezone
+        
+        if self.is_suspended and self.suspended_until:
+            if timezone.now() >= self.suspended_until:
+                self.is_suspended = False
+                self.suspension_reason = ""
+                self.suspended_until = None
+                self.save()
+                return True
+        return False
 
 
 class County(models.Model):
@@ -900,3 +1019,606 @@ class LeadPackagePurchase(models.Model):
     
     def __str__(self):
         return f"{self.user.username} - {self.number_of_leads} leads - ${self.total_price}"
+
+
+# TLC (Tax Lien Capital) Models
+# Translated and improved from Laravel TLC system
+
+class TLCClient(models.Model):
+    """TLC Client model for tax lien investments and loans"""
+    STATUS_CHOICES = [
+        ('prospect', 'Prospect'),
+        ('lead', 'Lead'),
+        ('applicant', 'Applicant'), 
+        ('client', 'Client'),
+        ('inactive', 'Inactive'),
+    ]
+    
+    WORKFLOW_CHOICES = [
+        ('initial_contact', 'Initial Contact'),
+        ('qualification', 'Qualification'),
+        ('application_review', 'Application Review'),
+        ('underwriting', 'Underwriting'),
+        ('loan_approval', 'Loan Approval'),
+        ('funding', 'Funding'),
+        ('servicing', 'Loan Servicing'),
+    ]
+    
+    # Primary identification
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client_number = models.CharField(max_length=20, unique=True)
+    
+    # Personal Information
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    email = models.EmailField(null=True, blank=True)
+    phone_primary = models.CharField(max_length=20, null=True, blank=True)
+    phone_secondary = models.CharField(max_length=20, null=True, blank=True)
+    ssn_last_four = models.CharField(max_length=4, null=True, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    
+    # Status and Workflow
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='prospect')
+    workflow_stage = models.CharField(max_length=30, choices=WORKFLOW_CHOICES, default='initial_contact')
+    lead_source = models.CharField(max_length=50, null=True, blank=True)
+    assigned_agent = models.CharField(max_length=100, null=True, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_contact = models.DateTimeField(null=True, blank=True)
+    last_activity = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['client_number']),
+            models.Index(fields=['status']),
+            models.Index(fields=['workflow_stage']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.client_number} - {self.first_name} {self.last_name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.client_number:
+            # Generate unique client number
+            import random
+            self.client_number = f"TLC{random.randint(10000, 99999)}"
+        super().save(*args, **kwargs)
+
+
+class TLCClientAddress(models.Model):
+    """Address information for TLC clients"""
+    ADDRESS_TYPES = [
+        ('mailing', 'Mailing Address'),
+        ('property', 'Property Address'),
+    ]
+    
+    client = models.ForeignKey(TLCClient, on_delete=models.CASCADE, related_name='addresses')
+    address_type = models.CharField(max_length=20, choices=ADDRESS_TYPES)
+    street_1 = models.CharField(max_length=255)
+    street_2 = models.CharField(max_length=255, null=True, blank=True)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=2)
+    zip_code = models.CharField(max_length=10)
+    county = models.CharField(max_length=100)
+    
+    class Meta:
+        unique_together = ['client', 'address_type']
+    
+    def __str__(self):
+        return f"{self.client.client_number} - {self.address_type}"
+
+
+class TLCTaxInfo(models.Model):
+    """Tax information for TLC clients"""
+    client = models.OneToOneField(TLCClient, on_delete=models.CASCADE, related_name='tax_info')
+    account_number = models.CharField(max_length=50)
+    tax_year = models.IntegerField()
+    original_tax_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    penalties_interest = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    attorney_fees = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount_due = models.DecimalField(max_digits=12, decimal_places=2)
+    tax_sale_date = models.DateField(null=True, blank=True)
+    lawsuit_status = models.CharField(max_length=50, null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.client.client_number} - Tax Year {self.tax_year}"
+
+
+class TLCPropertyValuation(models.Model):
+    """Property valuation information for TLC clients"""
+    client = models.OneToOneField(TLCClient, on_delete=models.CASCADE, related_name='property_valuation')
+    assessed_land_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    assessed_improvement_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    assessed_total_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    market_land_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    market_improvement_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    market_total_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    estimated_purchase_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.client.client_number} - Market Value ${self.market_total_value}"
+
+
+class TLCLoanInfo(models.Model):
+    """Loan information for TLC clients"""
+    LOAN_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('funded', 'Funded'),
+        ('declined', 'Declined'),
+        ('paid_off', 'Paid Off'),
+    ]
+    
+    client = models.OneToOneField(TLCClient, on_delete=models.CASCADE, related_name='loan_info')
+    loan_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    interest_rate = models.DecimalField(max_digits=5, decimal_places=2)
+    apr = models.DecimalField(max_digits=5, decimal_places=2)
+    term_months = models.IntegerField()
+    monthly_payment = models.DecimalField(max_digits=10, decimal_places=2)
+    total_payment = models.DecimalField(max_digits=12, decimal_places=2)
+    loan_to_value_ratio = models.DecimalField(max_digits=5, decimal_places=2)
+    status = models.CharField(max_length=20, choices=LOAN_STATUS_CHOICES, default='pending')
+    application_date = models.DateTimeField(auto_now_add=True)
+    funding_date = models.DateTimeField(null=True, blank=True)
+    payoff_date = models.DateTimeField(null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.client.client_number} - ${self.loan_amount} ({self.status})"
+
+
+class TLCClientNote(models.Model):
+    """Notes and communication history for TLC clients"""
+    NOTE_TYPES = [
+        ('general', 'General Note'),
+        ('call', 'Phone Call'),
+        ('email', 'Email'),
+        ('meeting', 'Meeting'),
+        ('document', 'Document'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(TLCClient, on_delete=models.CASCADE, related_name='notes')
+    content = models.TextField()
+    note_type = models.CharField(max_length=20, choices=NOTE_TYPES, default='general')
+    created_by = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.client.client_number} - {self.note_type} - {self.created_at.strftime('%Y-%m-%d')}"
+
+
+class TLCImportJob(models.Model):
+    """CSV import job tracking for TLC clients"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    filename = models.CharField(max_length=255)
+    file_size = models.BigIntegerField()
+    total_rows = models.IntegerField(default=0)
+    processed_rows = models.IntegerField(default=0)
+    successful_rows = models.IntegerField(default=0)
+    failed_rows = models.IntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    progress_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tlc_import_jobs')
+    
+    # Validation summary (stored as JSON-like fields)
+    duplicate_clients = models.IntegerField(default=0)
+    invalid_emails = models.IntegerField(default=0)
+    missing_required_fields = models.IntegerField(default=0)
+    invalid_tax_amounts = models.IntegerField(default=0)
+    invalid_dates = models.IntegerField(default=0)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.filename} - {self.status}"
+
+
+class TLCImportError(models.Model):
+    """Individual errors from TLC CSV imports"""
+    import_job = models.ForeignKey(TLCImportJob, on_delete=models.CASCADE, related_name='errors')
+    row_number = models.IntegerField()
+    column = models.CharField(max_length=100)
+    error_message = models.TextField()
+    raw_data = models.TextField()
+    
+    def __str__(self):
+        return f"Row {self.row_number}: {self.error_message[:50]}"
+
+
+# Document Management System Models
+# Enterprise-level document management with version control, workflows, and templates
+
+class DocumentFolder(models.Model):
+    """Hierarchical folder structure for document organization"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subfolders')
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_folders')
+    
+    # Permissions
+    is_shared = models.BooleanField(default=False)
+    shared_with = models.ManyToManyField(User, through='DocumentFolderPermission', through_fields=('folder', 'user'), related_name='accessible_folders')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['name']
+        unique_together = ['parent', 'name']
+        indexes = [
+            models.Index(fields=['parent']),
+            models.Index(fields=['created_by']),
+        ]
+    
+    def __str__(self):
+        return self.name
+    
+    @property
+    def full_path(self):
+        """Get full folder path"""
+        if self.parent:
+            return f"{self.parent.full_path}/{self.name}"
+        return self.name
+    
+    @property
+    def document_count(self):
+        """Get total document count including subfolders"""
+        count = self.documents.count()
+        for subfolder in self.subfolders.all():
+            count += subfolder.document_count
+        return count
+
+
+class Document(models.Model):
+    """Core document model with enterprise features"""
+    
+    DOCUMENT_TYPE_CHOICES = [
+        ('contract', 'Contract'),
+        ('proposal', 'Proposal'),
+        ('report', 'Report'),
+        ('template', 'Template'),
+        ('legal', 'Legal Document'),
+        ('invoice', 'Invoice'),
+        ('receipt', 'Receipt'),
+        ('tax_document', 'Tax Document'),
+        ('other', 'Other'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('pending_review', 'Pending Review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('signed', 'Signed'),
+        ('sent', 'Sent'),
+        ('delivered', 'Delivered'),
+        ('viewed', 'Viewed'),
+        ('completed', 'Completed'),
+        ('archived', 'Archived'),
+    ]
+    
+    # Primary identification
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    filename = models.CharField(max_length=255)
+    
+    # File information
+    file_path = models.CharField(max_length=500)
+    file_size = models.BigIntegerField()
+    file_type = models.CharField(max_length=50)
+    mime_type = models.CharField(max_length=100)
+    checksum = models.CharField(max_length=64, null=True, blank=True)  # SHA-256 for integrity
+    
+    # Document categorization
+    document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPE_CHOICES, default='other')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    folder = models.ForeignKey(DocumentFolder, on_delete=models.SET_NULL, null=True, blank=True, related_name='documents')
+    tags = models.JSONField(default=list, blank=True)
+    
+    # Version control
+    version = models.PositiveIntegerField(default=1)
+    parent_document = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='versions')
+    version_notes = models.TextField(blank=True)
+    is_latest_version = models.BooleanField(default=True)
+    
+    # Template functionality
+    is_template = models.BooleanField(default=False)
+    template_variables = models.JSONField(default=dict, blank=True)  # For document generation
+    
+    # Sharing and collaboration
+    is_shared = models.BooleanField(default=False)
+    is_favorite = models.BooleanField(default=False)
+    shared_with = models.ManyToManyField(User, through='DocumentPermission', through_fields=('document', 'user'), related_name='accessible_documents')
+    
+    # Merging and relationships
+    is_merged = models.BooleanField(default=False)
+    merged_from = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='merged_into')
+    
+    # Entity linking (for business context)
+    linked_leads = models.ManyToManyField('Lead', blank=True, related_name='documents')
+    linked_properties = models.ManyToManyField('Property', blank=True, related_name='documents')
+    linked_missions = models.ManyToManyField('Mission', blank=True, related_name='documents')
+    linked_tlc_clients = models.ManyToManyField('TLCClient', blank=True, related_name='documents')
+    
+    # Metadata and audit trail
+    metadata = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_documents')
+    last_modified_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='modified_documents')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_accessed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['document_type']),
+            models.Index(fields=['status']),
+            models.Index(fields=['folder']),
+            models.Index(fields=['created_by']),
+            models.Index(fields=['is_template']),
+            models.Index(fields=['is_shared']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['updated_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} (v{self.version})"
+    
+    def save(self, *args, **kwargs):
+        # Update version chain when saving
+        if self.parent_document:
+            # Mark all other versions as not latest
+            Document.objects.filter(
+                parent_document=self.parent_document
+            ).update(is_latest_version=False)
+            Document.objects.filter(
+                id=self.parent_document.id
+            ).update(is_latest_version=False)
+        super().save(*args, **kwargs)
+    
+    @property
+    def latest_version(self):
+        """Get the latest version number for this document chain"""
+        if self.parent_document:
+            return Document.objects.filter(
+                parent_document=self.parent_document
+            ).aggregate(models.Max('version'))['version__max'] or self.version
+        return self.version
+    
+    @property
+    def file_url(self):
+        """Generate file URL for download"""
+        return f"/api/documents/{self.id}/download/"
+
+
+class DocumentTemplate(models.Model):
+    """Document templates for generation"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    description = models.TextField()
+    template_type = models.CharField(max_length=50)
+    document = models.OneToOneField(Document, on_delete=models.CASCADE, related_name='template_config')
+    
+    # Template variables definition
+    variables = models.JSONField(default=list, blank=True)  # List of variable definitions
+    is_active = models.BooleanField(default=True)
+    
+    # Usage tracking
+    usage_count = models.PositiveIntegerField(default=0)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['name']
+    
+    def __str__(self):
+        return self.name
+
+
+class DocumentPermission(models.Model):
+    """Document-level permissions for sharing"""
+    PERMISSION_LEVELS = [
+        ('view', 'View Only'),
+        ('comment', 'View and Comment'),
+        ('edit', 'Edit'),
+        ('admin', 'Full Access'),
+    ]
+    
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='permissions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='document_permissions')
+    permission_level = models.CharField(max_length=10, choices=PERMISSION_LEVELS, default='view')
+    
+    # Permission details
+    can_view = models.BooleanField(default=True)
+    can_edit = models.BooleanField(default=False)
+    can_delete = models.BooleanField(default=False)
+    can_share = models.BooleanField(default=False)
+    can_download = models.BooleanField(default=True)
+    
+    granted_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='granted_permissions')
+    granted_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        unique_together = ['document', 'user']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.document.name} ({self.permission_level})"
+
+
+class DocumentFolderPermission(models.Model):
+    """Folder-level permissions"""
+    PERMISSION_LEVELS = [
+        ('view', 'View Only'),
+        ('edit', 'Edit'),
+        ('admin', 'Full Access'),
+    ]
+    
+    folder = models.ForeignKey(DocumentFolder, on_delete=models.CASCADE, related_name='permissions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='folder_permissions')
+    permission_level = models.CharField(max_length=10, choices=PERMISSION_LEVELS, default='view')
+    
+    granted_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='granted_folder_permissions')
+    granted_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['folder', 'user']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.folder.name} ({self.permission_level})"
+
+
+class DocumentStatusHistory(models.Model):
+    """Track document status changes for workflow management"""
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='status_history')
+    previous_status = models.CharField(max_length=20, choices=Document.STATUS_CHOICES)
+    new_status = models.CharField(max_length=20, choices=Document.STATUS_CHOICES)
+    changed_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='status_changes')
+    change_reason = models.TextField(blank=True)
+    
+    # Workflow metadata
+    workflow_step = models.CharField(max_length=50, blank=True)
+    approval_required = models.BooleanField(default=False)
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approvals')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['document']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.document.name}: {self.previous_status} → {self.new_status}"
+
+
+class DocumentActivity(models.Model):
+    """Track all document activities for audit trail"""
+    ACTIVITY_TYPES = [
+        ('created', 'Document Created'),
+        ('updated', 'Document Updated'),
+        ('viewed', 'Document Viewed'),
+        ('downloaded', 'Document Downloaded'),
+        ('shared', 'Document Shared'),
+        ('commented', 'Comment Added'),
+        ('signed', 'Document Signed'),
+        ('status_changed', 'Status Changed'),
+        ('version_created', 'New Version Created'),
+        ('merged', 'Document Merged'),
+        ('deleted', 'Document Deleted'),
+    ]
+    
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='activities')
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES)
+    description = models.TextField()
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='document_activities')
+    
+    # Activity metadata
+    metadata = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['document']),
+            models.Index(fields=['activity_type']),
+            models.Index(fields=['user']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} {self.get_activity_type_display()}: {self.document.name}"
+
+
+class DocumentAttachment(models.Model):
+    """Attachments linked to documents"""
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='attachments')
+    name = models.CharField(max_length=255)
+    file_path = models.CharField(max_length=500)
+    file_size = models.BigIntegerField()
+    file_type = models.CharField(max_length=50)
+    mime_type = models.CharField(max_length=100)
+    
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='uploaded_attachments')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.name} (attached to {self.document.name})"
+    
+    @property
+    def file_url(self):
+        """Generate file URL for download"""
+        return f"/api/documents/{self.document.id}/attachments/{self.id}/download/"
+
+
+class DocumentComment(models.Model):
+    """Comments and annotations on documents"""
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='document_comments')
+    content = models.TextField()
+    
+    # Comment threading
+    parent_comment = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    
+    # Document position (for annotations)
+    page_number = models.PositiveIntegerField(null=True, blank=True)
+    position_x = models.FloatField(null=True, blank=True)
+    position_y = models.FloatField(null=True, blank=True)
+    
+    # Status
+    is_resolved = models.BooleanField(default=False)
+    resolved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='resolved_comments')
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['document']),
+            models.Index(fields=['user']),
+            models.Index(fields=['is_resolved']),
+        ]
+    
+    def __str__(self):
+        return f"Comment by {self.user.username} on {self.document.name}"
+
+
+# Import communication models to make them available
+from .communication_models import (
+    Communication, CommunicationTemplate, Campaign, 
+    CampaignRecipient, CommunicationAnalytics
+)

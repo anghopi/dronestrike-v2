@@ -23,18 +23,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   useEffect(() => {
     // Check if user is already logged in
     const token = localStorage.getItem('access_token');
-    if (token) {
-      refreshProfile();
+    if (token && !isRefreshing) {
+      setIsRefreshing(true);
+      refreshProfile().finally(() => setIsRefreshing(false));
     } else {
       setIsLoading(false);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (credentials: LoginRequest): Promise<void> => {
+    if (isLoading || isRefreshing) {
+      console.log('Auth hook: Login already in progress, skipping duplicate request');
+      return;
+    }
+    
     try {
       setIsLoading(true);
       console.log('Auth hook: calling authService.login with:', credentials);
@@ -58,7 +65,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const refreshProfile = async (): Promise<void> => {
+    if (isRefreshing) {
+      console.log('Auth hook: Profile refresh already in progress, skipping duplicate request');
+      return;
+    }
+    
     try {
+      setIsRefreshing(true);
       setIsLoading(true);
       const profileData = await authService.getCurrentProfile();
       setProfile(profileData);
@@ -69,6 +82,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       logout();
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 

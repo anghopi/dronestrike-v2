@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStripe, useElements, CardElement } from '@stripe/react-stripe-js';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { 
   XMarkIcon,
   CreditCardIcon,
@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import stripeService from '../../services/stripeService';
 
 interface TokenPackage {
   name: string;
@@ -26,43 +27,14 @@ interface TokenPurchaseModalProps {
   onSuccess: () => void;
 }
 
-const TOKEN_PACKAGES = {
-  starter: {
-    name: "Starter Package",
-    regular_tokens: 1000,
-    mail_tokens: 0,
-    price: 50.00,
-    description: "Perfect for getting started"
-  },
-  professional: {
-    name: "Professional Package",
-    regular_tokens: 5000,
-    mail_tokens: 100,
-    price: 200.00,
-    description: "Best value for professionals"
-  },
-  enterprise: {
-    name: "Enterprise Package",
-    regular_tokens: 15000,
-    mail_tokens: 500,
-    price: 500.00,
-    description: "For high-volume users"
-  },
-  mail_special: {
-    name: "Mail Token Special",
-    regular_tokens: 0,
-    mail_tokens: 1000,
-    price: 800.00,
-    description: "Specialized mail tokens ($0.80 each)"
-  }
-};
+// Token packages will be loaded from API
 
 const TokenPurchaseModal: React.FC<TokenPurchaseModalProps> = ({
   isOpen,
   onClose,
   onSuccess
 }) => {
-  const [selectedPackage, setSelectedPackage] = useState<string>('professional');
+  const [selectedPackage, setSelectedPackage] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
   const [discountCode, setDiscountCode] = useState('');
   const [savePaymentMethod, setSavePaymentMethod] = useState(false);
@@ -72,44 +44,46 @@ const TokenPurchaseModal: React.FC<TokenPurchaseModalProps> = ({
   const stripe = useStripe();
   const elements = useElements();
 
-  const package_data = TOKEN_PACKAGES[selectedPackage as keyof typeof TOKEN_PACKAGES];
-  const totalAmount = package_data.price * quantity;
+  // Load token packages from API
+  const { data: packagesData, isLoading: packagesLoading, error: packagesError } = useQuery({
+    queryKey: ['token-packages'],
+    queryFn: stripeService.getTokenPackages,
+    enabled: isOpen
+  });
 
-  // Purchase tokens mutation
+  // Load user token balance
+  const { data: balanceData, refetch: refetchBalance } = useQuery({
+    queryKey: ['token-balance'],
+    queryFn: stripeService.getTokenBalance,
+    enabled: isOpen
+  });
+
+  // Set default selected package when data loads
+  useEffect(() => {
+    if (packagesData?.packages && packagesData.packages.length > 0 && !selectedPackage) {
+      setSelectedPackage(packagesData.packages[0].name);
+    }
+  }, [packagesData, selectedPackage]);
+
+  const selectedPackageData = packagesData?.packages?.find(pkg => pkg.name === selectedPackage);
+  const totalAmount = selectedPackageData ? selectedPackageData.price * quantity : 0;
+
+  // Purchase tokens mutation using new Stripe service
   const purchaseMutation = useMutation({
-    mutationFn: async ({ package_type, quantity, payment_method_id, save_payment_method }: any) => {
-      const response = await fetch('/api/payments/tokens/purchase', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          package_type,
-          quantity,
-          payment_method_id,
-          save_payment_method
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Purchase failed');
+    mutationFn: async (packageName: string) => {
+      const result = await stripeService.purchaseTokenPackage(packageName);
+      if (!result.success) {
+        throw new Error(result.error || 'Purchase failed');
       }
-
-      return response.json();
+      return result;
     },
-    onSuccess: (data) => {
-      if (data.status === 'succeeded') {
-        setStep('success');
-        setTimeout(() => {
-          onSuccess();
-          handleClose();
-        }, 2000);
-      } else {
-        // Payment requires confirmation
-        handlePaymentConfirmation(data);
-      }
+    onSuccess: () => {
+      setStep('success');
+      refetchBalance(); // Refresh token balance
+      setTimeout(() => {
+        onSuccess();
+        handleClose();
+      }, 2000);
     },
     onError: (error: any) => {
       setError(error.message);
@@ -149,39 +123,17 @@ const TokenPurchaseModal: React.FC<TokenPurchaseModalProps> = ({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     
-    if (!stripe || !elements) return;
+    if (!selectedPackage || !selectedPackageData) {
+      setError('Please select a package');
+      return;
+    }
 
     setError(null);
     setStep('processing');
 
-    const cardElement = elements.getElement(CardElement);
-    if (!cardElement) {
-      setError('Card element not found');
-      setStep('payment');
-      return;
-    }
-
     try {
-      // Create payment method
-      const { error: methodError, paymentMethod } = await stripe.createPaymentMethod({
-        type: 'card',
-        card: cardElement
-      });
-
-      if (methodError) {
-        setError(methodError.message || 'Failed to create payment method');
-        setStep('payment');
-        return;
-      }
-
-      // Process purchase
-      purchaseMutation.mutate({
-        package_type: selectedPackage,
-        quantity,
-        payment_method_id: paymentMethod?.id,
-        save_payment_method: savePaymentMethod
-      });
-
+      // Use the Stripe service to handle the purchase
+      purchaseMutation.mutate(selectedPackage);
     } catch (err: any) {
       setError(err.message);
       setStep('payment');
@@ -191,7 +143,7 @@ const TokenPurchaseModal: React.FC<TokenPurchaseModalProps> = ({
   const handleClose = () => {
     setStep('select');
     setError(null);
-    setSelectedPackage('professional');
+    setSelectedPackage('');
     setQuantity(1);
     setDiscountCode('');
     setSavePaymentMethod(false);
@@ -221,47 +173,80 @@ const TokenPurchaseModal: React.FC<TokenPurchaseModalProps> = ({
               {/* Package Selection */}
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Select Token Package</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(TOKEN_PACKAGES).map(([key, pkg]) => (
-                    <div
-                      key={key}
-                      className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                        selectedPackage === key
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      onClick={() => setSelectedPackage(key)}
-                    >
-                      <div className="flex items-start space-x-3">
-                        <div className="flex-shrink-0 mt-1">
-                          {pkg.mail_tokens > 0 ? (
-                            <MailIcon className="h-6 w-6 text-orange-500" />
-                          ) : (
-                            <CoinsIcon className="h-6 w-6 text-blue-500" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-medium text-gray-900">{pkg.name}</h4>
-                          <p className="text-sm text-gray-600 mb-2">{pkg.description}</p>
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm">
-                              {pkg.regular_tokens > 0 && (
-                                <span className="text-blue-600">{pkg.regular_tokens.toLocaleString()} regular</span>
-                              )}
-                              {pkg.regular_tokens > 0 && pkg.mail_tokens > 0 && <span className="text-gray-400"> + </span>}
-                              {pkg.mail_tokens > 0 && (
-                                <span className="text-orange-600">{pkg.mail_tokens.toLocaleString()} mail</span>
-                              )}
-                            </div>
-                            <div className="text-lg font-semibold text-gray-900">
-                              ${pkg.price.toFixed(2)}
+                
+                {packagesLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-gray-600">Loading packages...</span>
+                  </div>
+                )}
+
+                {packagesError && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-sm text-red-800">Failed to load token packages</p>
+                  </div>
+                )}
+
+                {packagesData?.packages && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {packagesData.packages.map((pkg) => (
+                      <div
+                        key={pkg.name}
+                        className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                          selectedPackage === pkg.name
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => setSelectedPackage(pkg.name)}
+                      >
+                        <div className="flex items-start space-x-3">
+                          <div className="flex-shrink-0 mt-1">
+                            {pkg.mail_tokens > 0 ? (
+                              <MailIcon className="h-6 w-6 text-orange-500" />
+                            ) : (
+                              <CoinsIcon className="h-6 w-6 text-blue-500" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-medium text-gray-900">{pkg.name}</h4>
+                            <p className="text-sm text-gray-600 mb-2">{pkg.description}</p>
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm">
+                                {pkg.regular_tokens > 0 && (
+                                  <span className="text-blue-600">{pkg.regular_tokens.toLocaleString()} regular</span>
+                                )}
+                                {pkg.regular_tokens > 0 && pkg.mail_tokens > 0 && <span className="text-gray-400"> + </span>}
+                                {pkg.mail_tokens > 0 && (
+                                  <span className="text-orange-600">{pkg.mail_tokens.toLocaleString()} mail</span>
+                                )}
+                              </div>
+                              <div className="text-lg font-semibold text-gray-900">
+                                ${pkg.price.toFixed(2)}
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Current Balance Display */}
+                {balanceData && (
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-700 mb-1">Current Balance</h4>
+                    <div className="flex items-center space-x-4 text-sm">
+                      <span className="text-blue-600">
+                        <CoinsIcon className="h-4 w-4 inline mr-1" />
+                        {balanceData.regular_tokens.toLocaleString()} regular
+                      </span>
+                      <span className="text-orange-600">
+                        <MailIcon className="h-4 w-4 inline mr-1" />
+                        {balanceData.mail_tokens.toLocaleString()} mail
+                      </span>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Quantity */}
@@ -297,30 +282,32 @@ const TokenPurchaseModal: React.FC<TokenPurchaseModalProps> = ({
               </div>
 
               {/* Order Summary */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Order Summary</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>{package_data.name} x{quantity}</span>
-                    <span>${totalAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span>Regular Tokens</span>
-                    <span>{(package_data.regular_tokens * quantity).toLocaleString()}</span>
-                  </div>
-                  {package_data.mail_tokens > 0 && (
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>Mail Tokens</span>
-                      <span>{(package_data.mail_tokens * quantity).toLocaleString()}</span>
+              {selectedPackageData && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-3">Order Summary</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span>{selectedPackageData.name} x{quantity}</span>
+                      <span>${totalAmount.toFixed(2)}</span>
                     </div>
-                  )}
-                  <hr />
-                  <div className="flex justify-between font-semibold">
-                    <span>Total</span>
-                    <span>${totalAmount.toFixed(2)}</span>
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Regular Tokens</span>
+                      <span>{(selectedPackageData.regular_tokens * quantity).toLocaleString()}</span>
+                    </div>
+                    {selectedPackageData.mail_tokens > 0 && (
+                      <div className="flex justify-between text-sm text-gray-600">
+                        <span>Mail Tokens</span>
+                        <span>{(selectedPackageData.mail_tokens * quantity).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <hr />
+                    <div className="flex justify-between font-semibold">
+                      <span>Total</span>
+                      <span>${totalAmount.toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex justify-end space-x-3">
                 <Button variant="outline" onClick={handleClose}>
@@ -333,10 +320,10 @@ const TokenPurchaseModal: React.FC<TokenPurchaseModalProps> = ({
             </div>
           )}
 
-          {step === 'payment' && (
-            <form onSubmit={handleSubmit} className="space-y-6">
+          {step === 'payment' && selectedPackageData && (
+            <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Information</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Confirm Purchase</h3>
                 
                 {error && (
                   <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
@@ -349,49 +336,39 @@ const TokenPurchaseModal: React.FC<TokenPurchaseModalProps> = ({
                   </div>
                 )}
 
-                <div className="border rounded-lg p-4">
-                  <CardElement
-                    options={{
-                      style: {
-                        base: {
-                          fontSize: '16px',
-                          color: '#424770',
-                          '::placeholder': {
-                            color: '#aab7c4',
-                          },
-                        },
-                      },
-                    }}
-                  />
+                {/* Purchase Summary */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <h4 className="font-medium text-blue-900 mb-2">Purchase Summary</h4>
+                  <div className="space-y-1 text-sm text-blue-800">
+                    <div>Package: {selectedPackageData.name}</div>
+                    <div>Quantity: {quantity}</div>
+                    <div>Regular Tokens: {(selectedPackageData.regular_tokens * quantity).toLocaleString()}</div>
+                    {selectedPackageData.mail_tokens > 0 && (
+                      <div>Mail Tokens: {(selectedPackageData.mail_tokens * quantity).toLocaleString()}</div>
+                    )}
+                    <div className="font-semibold pt-2 border-t border-blue-300">
+                      Total: ${totalAmount.toFixed(2)}
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center">
-                <input
-                  id="save-payment"
-                  type="checkbox"
-                  checked={savePaymentMethod}
-                  onChange={(e) => setSavePaymentMethod(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 rounded border-gray-300"
-                />
-                <label htmlFor="save-payment" className="ml-2 text-sm text-gray-700">
-                  Save payment method for future purchases
-                </label>
+                <div className="text-sm text-gray-600 space-y-2">
+                  <p>• You will be redirected to Stripe's secure checkout</p>
+                  <p>• Tokens will be added to your account after payment</p>
+                  <p>• Payment is processed securely by Stripe</p>
+                </div>
               </div>
 
               <div className="flex justify-between items-center pt-4 border-t">
                 <Button variant="outline" onClick={() => setStep('select')}>
                   Back
                 </Button>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600">Total: ${totalAmount.toFixed(2)}</p>
-                  <Button type="submit" disabled={!stripe}>
-                    <CreditCardIcon className="h-4 w-4 mr-2" />
-                    Purchase Tokens
-                  </Button>
-                </div>
+                <Button onClick={handleSubmit} disabled={purchaseMutation.isPending}>
+                  <CreditCardIcon className="h-4 w-4 mr-2" />
+                  {purchaseMutation.isPending ? 'Processing...' : 'Continue to Checkout'}
+                </Button>
               </div>
-            </form>
+            </div>
           )}
 
           {step === 'processing' && (

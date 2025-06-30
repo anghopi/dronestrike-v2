@@ -12,8 +12,9 @@ import {
 } from '@heroicons/react/24/outline';
 import { HeaderTabs } from '../components/Layout/HeaderTabs';
 import { useAuth } from '../hooks/useAuth';
-import { leadService, propertyService } from '../services/api';
+import { leadService, propertyService, tokenAPI } from '../services/api';
 import { DashboardStats } from '../types';
+import { useWebSocket, useRealTimeNotifications } from '../hooks/useWebSocket';
 
 interface StatCardProps {
   title: string;
@@ -103,13 +104,22 @@ export const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tokenBalance, setTokenBalance] = useState<{ regular_tokens: number; mail_tokens: number } | null>(null);
+
+  // WebSocket hooks for real-time updates
+  const { isConnected, connectionStatus } = useWebSocket();
+  const { notifications, unreadCount } = useRealTimeNotifications();
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const dashboardStats = await leadService.getDashboardStats();
+        const [dashboardStats, balance] = await Promise.all([
+          leadService.getDashboardStats(),
+          tokenAPI.getBalance()
+        ]);
         setStats(dashboardStats);
+        setTokenBalance(balance);
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
         setError('Failed to load dashboard data');
@@ -120,6 +130,18 @@ export const Dashboard: React.FC = () => {
 
     fetchDashboardData();
   }, []);
+
+  // Listen for real-time updates
+  useEffect(() => {
+    const tokenUpdateNotifications = notifications.filter(n => 
+      n.type === 'token_balance_update'
+    );
+    
+    if (tokenUpdateNotifications.length > 0) {
+      // Refresh token balance when we get updates
+      tokenAPI.getBalance().then(setTokenBalance).catch(console.error);
+    }
+  }, [notifications]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -185,6 +207,22 @@ export const Dashboard: React.FC = () => {
                   </span>
                   <span className="text-gray-300">•</span>
                   <span className="text-gray-300">DroneStrike Command Center</span>
+                  
+                  {/* Real-time status */}
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span className={`text-sm ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
+                      {isConnected ? 'LIVE' : 'OFFLINE'}
+                    </span>
+                  </div>
+                  
+                  {/* Notification counter */}
+                  {unreadCount > 0 && (
+                    <div className="flex items-center space-x-1 px-2 py-1 bg-red-600 rounded-full text-xs text-white">
+                      <span>🔔</span>
+                      <span>{unreadCount}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -235,6 +273,20 @@ export const Dashboard: React.FC = () => {
             icon={CurrencyDollarIcon}
             color="warning"
             href="/opportunities"
+          />
+          <StatCard
+            title="Regular Tokens"
+            value={tokenBalance?.regular_tokens?.toLocaleString() || '0'}
+            icon={CurrencyDollarIcon}
+            color="primary"
+            href="/tokens"
+          />
+          <StatCard
+            title="Mail Tokens"
+            value={tokenBalance?.mail_tokens?.toLocaleString() || '0'}
+            icon={CurrencyDollarIcon}
+            color="success"
+            href="/tokens"
           />
           <StatCard
             title="High Score Leads"

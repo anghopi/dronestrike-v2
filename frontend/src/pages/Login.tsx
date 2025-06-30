@@ -64,9 +64,6 @@ export const Login: React.FC = () => {
             <h3 className="text-2xl font-semibold leading-none tracking-tight text-white">DroneStrike CRM</h3>
           </div>
           <p className="text-sm text-gray-400">Enter your credentials to access the command center</p>
-          <p className="text-xs text-gray-500 mt-2">
-            <span className="font-medium">Demo Credentials:</span> admin / admin
-          </p>
 
           {rememberedUser && (
             <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 mt-4 w-full">

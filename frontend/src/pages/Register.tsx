@@ -86,7 +86,7 @@ export const Register: React.FC = () => {
 
     } catch (err: any) {
       console.error('Registration error:', err);
-      setError(err.response?.data?.detail || 'Registration failed. Please try again.');
+      setError(err.response?.data?.error || err.response?.data?.detail || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

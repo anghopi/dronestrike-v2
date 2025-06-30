@@ -15,6 +15,8 @@ import {
   Loader2
 } from 'lucide-react';
 import { tokenAPI } from '../services/api';
+import { TokenBalance as GlobalTokenBalance } from '../types';
+import { useRealTimeNotifications } from '../hooks/useWebSocket';
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || 'pk_test_...');
 
@@ -26,9 +28,7 @@ interface TokenPackage {
   description: string;
 }
 
-interface TokenBalance {
-  regular_tokens: number;
-  mail_tokens: number;
+interface TokenBalance extends GlobalTokenBalance {
   profile_tokens: number;
   profile_mail_tokens: number;
 }
@@ -213,9 +213,24 @@ const TokensManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'buy' | 'history' | 'subscription'>('buy');
   const [loading, setLoading] = useState(true);
 
+  // Real-time notifications for token updates
+  const { notifications } = useRealTimeNotifications();
+
   useEffect(() => {
     loadData();
   }, []);
+
+  // Listen for real-time token balance updates
+  useEffect(() => {
+    const tokenUpdateNotifications = notifications.filter(n => 
+      n.type === 'token_balance_update'
+    );
+    
+    if (tokenUpdateNotifications.length > 0) {
+      // Refresh balance when we get real-time updates
+      loadData();
+    }
+  }, [notifications]);
 
   const loadData = async () => {
     try {
@@ -335,82 +350,273 @@ const TokensManagement: React.FC = () => {
         {activeTab === 'buy' && (
           <div>
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-3">Token Packages</h2>
+              <h2 className="text-2xl font-bold text-white mb-3">Token & Lead Packages</h2>
               <p className="text-slate-400 text-lg">
-                Choose from our token packages below. Regular tokens cost $0.001 each, Mail tokens cost $0.80 each.
+                Choose from our comprehensive packages. Regular tokens cost $0.001 each, Mail tokens cost $0.80 each.
               </p>
               
-              {/* Token Usage Guide */}
-              <div className="mt-6 p-6 bg-slate-800/50 rounded-lg border border-slate-700/50">
-                <h3 className="text-lg font-semibold text-white mb-4">Token Usage Guide</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                  <div className="p-3 bg-slate-700/30 rounded">
-                    <div className="font-medium text-blue-400 mb-1">SMS Texts</div>
-                    <div className="text-slate-300">8 regular tokens</div>
-                    <div className="text-slate-400 text-xs">$0.008 per text</div>
+              {/* Comprehensive Service Pricing Guide */}
+              <div className="mt-6 p-6 bg-gradient-to-br from-slate-800/80 to-slate-900/80 rounded-xl border border-slate-700/50 backdrop-blur-sm">
+                <h3 className="text-xl font-semibold text-white mb-6 flex items-center space-x-2">
+                  <Coins className="text-blue-400" size={24} />
+                  <span>Service Pricing Guide</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="p-4 bg-gradient-to-br from-blue-600/20 to-blue-800/20 rounded-lg border border-blue-500/30">
+                    <div className="font-bold text-blue-400 mb-2 flex items-center space-x-2">
+                      <Mail className="w-4 h-4" />
+                      <span>SMS Texts</span>
+                    </div>
+                    <div className="text-slate-200 font-medium">8 regular tokens</div>
+                    <div className="text-blue-300 text-sm font-semibold">$0.008 per text</div>
+                    <div className="text-slate-400 text-xs mt-1">Actual cost: $0.007</div>
                   </div>
-                  <div className="p-3 bg-slate-700/30 rounded">
-                    <div className="font-medium text-green-400 mb-1">Phone Minutes</div>
-                    <div className="text-slate-300">100 regular tokens</div>
-                    <div className="text-slate-400 text-xs">$0.10 per minute</div>
+                  <div className="p-4 bg-gradient-to-br from-green-600/20 to-green-800/20 rounded-lg border border-green-500/30">
+                    <div className="font-bold text-green-400 mb-2 flex items-center space-x-2">
+                      <Package className="w-4 h-4" />
+                      <span>Phone Minutes</span>
+                    </div>
+                    <div className="text-slate-200 font-medium">100 regular tokens</div>
+                    <div className="text-green-300 text-sm font-semibold">$0.10 per minute</div>
+                    <div className="text-slate-400 text-xs mt-1">Actual cost: $0.0095</div>
                   </div>
-                  <div className="p-3 bg-slate-700/30 rounded">
-                    <div className="font-medium text-yellow-400 mb-1">Skip Trace</div>
-                    <div className="text-slate-300">800 regular tokens</div>
-                    <div className="text-slate-400 text-xs">$0.80 per lookup</div>
+                  <div className="p-4 bg-gradient-to-br from-yellow-600/20 to-yellow-800/20 rounded-lg border border-yellow-500/30">
+                    <div className="font-bold text-yellow-400 mb-2 flex items-center space-x-2">
+                      <Shield className="w-4 h-4" />
+                      <span>Skip Trace</span>
+                    </div>
+                    <div className="text-slate-200 font-medium">800 regular tokens</div>
+                    <div className="text-yellow-300 text-sm font-semibold">$0.80 per lookup</div>
+                    <div className="text-slate-400 text-xs mt-1">Actual cost: $0.55</div>
                   </div>
-                  <div className="p-3 bg-slate-700/30 rounded">
-                    <div className="font-medium text-purple-400 mb-1">Mail Out</div>
-                    <div className="text-slate-300">1 regular + 1 mail token</div>
-                    <div className="text-slate-400 text-xs">$0.80 per mail piece</div>
+                  <div className="p-4 bg-gradient-to-br from-purple-600/20 to-purple-800/20 rounded-lg border border-purple-500/30">
+                    <div className="font-bold text-purple-400 mb-2 flex items-center space-x-2">
+                      <Mail className="w-4 h-4" />
+                      <span>Mail Out</span>
+                    </div>
+                    <div className="text-slate-200 font-medium">1 regular + 1 mail token</div>
+                    <div className="text-purple-300 text-sm font-semibold">$0.80 per mail</div>
+                    <div className="text-slate-400 text-xs mt-1">Actual cost: $0.37</div>
+                  </div>
+                </div>
+                
+                {/* Additional Services */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                  <div className="p-3 bg-slate-700/30 rounded-lg border border-slate-600/30">
+                    <div className="font-medium text-cyan-400 mb-1">Email Marketing</div>
+                    <div className="text-slate-300">Free with subscription</div>
+                    <div className="text-slate-400 text-xs">No token cost</div>
+                  </div>
+                  <div className="p-3 bg-slate-700/30 rounded-lg border border-slate-600/30">
+                    <div className="font-medium text-orange-400 mb-1">Lead Generation</div>
+                    <div className="text-slate-300">Free with subscription</div>
+                    <div className="text-slate-400 text-xs">No token cost</div>
+                  </div>
+                  <div className="p-3 bg-slate-700/30 rounded-lg border border-slate-600/30">
+                    <div className="font-medium text-red-400 mb-1">Phone Line Monthly</div>
+                    <div className="text-slate-300">$0.80 per line</div>
+                    <div className="text-slate-400 text-xs">Fixed monthly cost</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {packages.map((pkg, index) => (
-                <div key={index} className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-xl p-8 hover:border-slate-600/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
+            {/* Lead Packages Section */}
+            <div className="mb-12">
+              <h3 className="text-xl font-bold text-white mb-6 flex items-center space-x-2">
+                <Star className="text-yellow-400" size={24} />
+                <span>Premium Lead Packages</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Basic Lead Package */}
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-xl p-6 hover:border-green-600/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
+                  <div className="text-center mb-6">
+                    <div className="mb-4">
+                      <Package size={28} className="mx-auto text-green-400" />
+                    </div>
+                    <h4 className="text-lg font-bold text-white mb-2">Basic Lead Package</h4>
+                    <div className="text-3xl font-bold text-green-400 mb-2">
+                      $1.50<span className="text-lg text-slate-400">/lead</span>
+                    </div>
+                    <p className="text-slate-400 text-sm">Minimum 10 leads</p>
+                  </div>
+                  <div className="space-y-3 mb-6">
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-green-400" />
+                      <span className="text-sm">High-quality verified leads</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-green-400" />
+                      <span className="text-sm">Contact information included</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-green-400" />
+                      <span className="text-sm">Property details attached</span>
+                    </div>
+                  </div>
+                  <button className="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-medium rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-lg hover:shadow-xl">
+                    Purchase Leads
+                  </button>
+                </div>
+
+                {/* Lead + Skip + Mail */}
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-blue-500/50 rounded-xl p-6 hover:border-blue-400/70 transition-all duration-300 shadow-xl hover:shadow-2xl relative">
+                  <div className="absolute top-3 right-3">
+                    <span className="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full">BEST VALUE</span>
+                  </div>
+                  <div className="text-center mb-6">
+                    <div className="mb-4">
+                      <Crown size={28} className="mx-auto text-blue-400" />
+                    </div>
+                    <h4 className="text-lg font-bold text-white mb-2">Lead + Skip + Mail</h4>
+                    <div className="text-3xl font-bold text-blue-400 mb-2">
+                      $1.50<span className="text-lg text-slate-400">/lead</span>
+                    </div>
+                    <p className="text-slate-400 text-sm">Value: $1.80 - Save $0.30!</p>
+                  </div>
+                  <div className="space-y-3 mb-6">
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-blue-400" />
+                      <span className="text-sm">1 Mail token included</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-blue-400" />
+                      <span className="text-sm">Skip trace lookup</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-blue-400" />
+                      <span className="text-sm">200 regular tokens</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-blue-400" />
+                      <span className="text-sm">Complete lead profile</span>
+                    </div>
+                  </div>
+                  <button className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl">
+                    Get Complete Package
+                  </button>
+                </div>
+
+                {/* Lead + Skip Only */}
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-xl p-6 hover:border-purple-600/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
+                  <div className="text-center mb-6">
+                    <div className="mb-4">
+                      <Shield size={28} className="mx-auto text-purple-400" />
+                    </div>
+                    <h4 className="text-lg font-bold text-white mb-2">Lead + Skip Only</h4>
+                    <div className="text-3xl font-bold text-purple-400 mb-2">
+                      $1.00<span className="text-lg text-slate-400">/lead</span>
+                    </div>
+                    <p className="text-slate-400 text-sm">Perfect for digital outreach</p>
+                  </div>
+                  <div className="space-y-3 mb-6">
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-purple-400" />
+                      <span className="text-sm">Skip trace included</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-purple-400" />
+                      <span className="text-sm">200 regular tokens</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-slate-300">
+                      <Check size={16} className="text-purple-400" />
+                      <span className="text-sm">Enhanced lead data</span>
+                    </div>
+                  </div>
+                  <button className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white font-medium rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-lg hover:shadow-xl">
+                    Purchase Package
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Token Packages Section */}
+            <div>
+              <h3 className="text-xl font-bold text-white mb-6 flex items-center space-x-2">
+                <Coins className="text-blue-400" size={24} />
+                <span>Token Packages</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {/* Standard Package */}
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-xl p-8 hover:border-slate-600/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
                   <div className="text-center mb-6">
                     <div className="mb-4">
                       <Package size={32} className="mx-auto text-blue-400" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-3">{pkg.name}</h3>
+                    <h4 className="text-xl font-bold text-white mb-3">Standard Package</h4>
                     <div className="text-4xl font-bold text-blue-400 mb-3">
-                      ${pkg.price}
+                      $25
                     </div>
-                    <p className="text-slate-400">{pkg.description}</p>
+                    <p className="text-slate-400">Perfect for getting started</p>
                   </div>
 
                   <div className="space-y-4 mb-8">
-                    {pkg.regular_tokens > 0 && (
-                      <div className="flex justify-between items-center p-3 bg-slate-700/30 rounded-lg">
-                        <span className="flex items-center space-x-2 text-slate-300">
-                          <Coins size={18} className="text-blue-400" />
-                          <span>Regular Tokens</span>
-                        </span>
-                        <span className="font-bold text-blue-400">{pkg.regular_tokens.toLocaleString()}</span>
+                    <div className="flex justify-between items-center p-3 bg-slate-700/30 rounded-lg">
+                      <span className="flex items-center space-x-2 text-slate-300">
+                        <Coins size={18} className="text-blue-400" />
+                        <span>Regular Tokens</span>
+                      </span>
+                      <span className="font-bold text-blue-400">25,000</span>
+                    </div>
+                    <div className="p-3 bg-slate-700/30 rounded-lg">
+                      <div className="text-center text-slate-300">
+                        <div className="text-sm">Cost per token</div>
+                        <div className="font-bold text-green-400">$0.001</div>
                       </div>
-                    )}
-                    {pkg.mail_tokens > 0 && (
-                      <div className="flex justify-between items-center p-3 bg-slate-700/30 rounded-lg">
-                        <span className="flex items-center space-x-2 text-slate-300">
-                          <Mail size={18} className="text-green-400" />
-                          <span>Mail Tokens</span>
-                        </span>
-                        <span className="font-bold text-green-400">{pkg.mail_tokens.toLocaleString()}</span>
-                      </div>
-                    )}
+                    </div>
                   </div>
 
                   <button
-                    onClick={() => setSelectedPackage(pkg)}
                     className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
                     Purchase Package
                   </button>
                 </div>
-              ))}
+
+                {/* API Packages would be dynamically loaded */}
+                {packages.map((pkg, index) => (
+                  <div key={index} className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-xl p-8 hover:border-slate-600/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
+                    <div className="text-center mb-6">
+                      <div className="mb-4">
+                        <Package size={32} className="mx-auto text-blue-400" />
+                      </div>
+                      <h4 className="text-xl font-bold text-white mb-3">{pkg.name}</h4>
+                      <div className="text-4xl font-bold text-blue-400 mb-3">
+                        ${pkg.price}
+                      </div>
+                      <p className="text-slate-400">{pkg.description}</p>
+                    </div>
+
+                    <div className="space-y-4 mb-8">
+                      {pkg.regular_tokens > 0 && (
+                        <div className="flex justify-between items-center p-3 bg-slate-700/30 rounded-lg">
+                          <span className="flex items-center space-x-2 text-slate-300">
+                            <Coins size={18} className="text-blue-400" />
+                            <span>Regular Tokens</span>
+                          </span>
+                          <span className="font-bold text-blue-400">{pkg.regular_tokens.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {pkg.mail_tokens > 0 && (
+                        <div className="flex justify-between items-center p-3 bg-slate-700/30 rounded-lg">
+                          <span className="flex items-center space-x-2 text-slate-300">
+                            <Mail size={18} className="text-green-400" />
+                            <span>Mail Tokens</span>
+                          </span>
+                          <span className="font-bold text-green-400">{pkg.mail_tokens.toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedPackage(pkg)}
+                      className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                      Purchase Package
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
